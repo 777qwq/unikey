@@ -35,7 +35,7 @@ static void DumpKeyEvent(UIEvent *event) {
                     id typeObj = SafeMsg(press, sel_registerName("type"));
                     long ptype = -1;
                     if ([typeObj isKindOfClass:[NSNumber class]]) ptype = [typeObj longValue];
-                    else if (typeObj) ptype = (long)(uintptr_t)typeObj & 0xFFFF;
+                    else if (typeObj) ptype = -2; /* non-numeric type */
                     id phase = SafeMsg(press, sel_registerName("phase"));
                     long pphase = [phase isKindOfClass:[NSNumber class]] ? [phase longValue] : -1;
                     UKLog([NSString stringWithFormat:@"  press type=%ld(0x%lx) phase=%ld", ptype, ptype, pphase]);
