@@ -1,6 +1,6 @@
 Package: com.user.unikey
 Name: UniKey 键盘侦察
-Version: 0.4.0
+Version: 0.4.1
 Architecture: iphoneos-arm64
 Description: iPad 第三方键盘按键事件侦察
 Author: user
