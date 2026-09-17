@@ -3,7 +3,6 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <stdio.h>
-#include <string.h>
 #include <time.h>
 
 static void UKLog(NSString *msg) {
@@ -16,28 +15,47 @@ static void UKLog(NSString *msg) {
     } @catch (NSException *e) { }
 }
 
-static void ClassRecon(void) {
+static id SafeMsg(id obj, SEL sel) {
+    if (!obj || !sel) return nil;
     @try {
-        FILE *f = fopen("/var/mobile/unikey_recon.log", "w");
-        if (!f) return;
-        unsigned int count = 0;
-        Class *classes = objc_copyClassList(&count);
-        for (unsigned int i = 0; i < count; i++) {
-            const char *nm = class_getName(classes[i]);
-            if (!nm) continue;
-            if (strstr(nm, "HardwareKey") || strstr(nm, "KeyCommand") ||
-                (strstr(nm, "Keyboard") && !strstr(nm, "KB"))) {
-                fprintf(f, "=== %s\n", nm);
-                unsigned int mcount = 0;
-                Method *methods = class_copyMethodList(classes[i], &mcount);
-                for (unsigned int j = 0; j < mcount && j < 40; j++)
-                    fprintf(f, "    - %s\n", sel_getName(method_getName(methods[j])));
-                if (methods) free(methods);
+        if (![obj respondsToSelector:sel]) return nil;
+        return ((id(*)(id, SEL))objc_msgSend)(obj, sel);
+    } @catch (NSException *e) { return nil; }
+}
+
+// 深挖一个按键事件的全部可用信息
+static void DumpKeyEvent(UIEvent *event) {
+    @try {
+        // 1) UIPress 数组
+        id presses = SafeMsg(event, sel_registerName("allPresses"));
+        if (![presses isKindOfClass:[NSSet class]]) presses = [event allTouches]; // fallback
+        if ([presses isKindOfClass:[NSSet class]]) {
+            for (id press in presses) {
+                @try {
+                    id typeObj = SafeMsg(press, sel_registerName("type"));
+                    long ptype = -1;
+                    if ([typeObj isKindOfClass:[NSNumber class]]) ptype = [typeObj longValue];
+                    else if (typeObj) ptype = (long)(uintptr_t)typeObj & 0xFFFF;
+                    id phase = SafeMsg(press, sel_registerName("phase"));
+                    long pphase = [phase isKindOfClass:[NSNumber class]] ? [phase longValue] : -1;
+                    UKLog([NSString stringWithFormat:@"  press type=%ld(0x%lx) phase=%ld", ptype, ptype, pphase]);
+                } @catch (NSException *e) { }
             }
         }
-        free(classes);
-        fclose(f);
-        UKLog(@"class recon done");
+        // 2) 修饰键/输入串/键码（各私有属性 SafeMsg 探测）
+        NSString *report = @"";
+        const char *sels[] = {"input", "_inputString", "modifierFlags", "_modifierFlags",
+                              "hidUsage", "_hidUsage", "keyCode", "_keyCode", "_keyboardInputMode",
+                              "keyboardInputMode", "_characters", "_unmodifiedInput", NULL};
+        for (int i = 0; sels[i]; i++) {
+            id v = SafeMsg(event, sel_registerName(sels[i]));
+            if (v) {
+                NSString *s = [NSString stringWithFormat:@"%@", v];
+                if (s.length > 80) s = [s substringToIndex:80];
+                report = [report stringByAppendingFormat:@" %@=%@", @(sels[i]), s];
+            }
+        }
+        if (report.length) UKLog([NSString stringWithFormat:@"  detail:%@", report]);
     } @catch (NSException *e) { }
 }
 
@@ -46,12 +64,9 @@ static void ClassRecon(void) {
 - (void)sendEvent:(UIEvent *)event {
     @try {
         UIEventType type = event.type;
-        // 只关注非触摸事件（键盘/按键/HID）
-        if (type != UIEventTypeTouches) {
-            NSString *desc = [event description];
-            if (desc.length > 500) desc = [desc substringToIndex:500];
-            UKLog([NSString stringWithFormat:@"type=%ld subtype=%ld desc=%@",
-                  (long)type, (long)event.subtype, desc]);
+        if (type == 4) { // UIPhysicalKeyboardEvent，过滤hover刷屏
+            UKLog(@"KEY EVENT:");
+            DumpKeyEvent(event);
         }
     } @catch (NSException *e) { }
     %orig;
@@ -62,8 +77,5 @@ static void ClassRecon(void) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.1 loaded (recon)");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        ClassRecon();
-    });
+    UKLog(@"unikey 0.2 loaded (deep recon)");
 }
