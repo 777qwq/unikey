@@ -3,7 +3,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <stdio.h>
-#include <time.h>
+#include <sys/stat.h>
+#include <string.h>
 
 static void UKLog(NSString *msg) {
     @try {
@@ -15,79 +16,143 @@ static void UKLog(NSString *msg) {
     } @catch (NSException *e) { }
 }
 
-// 返回类型编码检查：'@'=对象, 整型族=数字, 其他=跳过
-typedef enum { RET_UNKNOWN, RET_OBJECT, RET_INT } RetKind;
-static RetKind RetKindOf(id obj, SEL sel) {
-    @try {
-        if (!obj || !sel) return RET_UNKNOWN;
-        Method m = class_getInstanceMethod(object_getClass(obj), sel);
-        if (!m) return RET_UNKNOWN;
-        const char *enc = method_getTypeEncoding(m);
-        if (!enc || !enc[0]) return RET_UNKNOWN;
-        char r = enc[0];
-        if (r == '@') return RET_OBJECT;
-        if (r=='q'||r=='Q'||r=='i'||r=='I'||r=='l'||r=='L'||r=='c'||r=='C'||r=='s'||r=='S'||r=='B') return RET_INT;
-        return RET_UNKNOWN;
-    } @catch (NSException *e) { return RET_UNKNOWN; }
-}
-
-// 只对返回对象的 selector 使用
 static id SafeMsgObj(id obj, SEL sel) {
     @try {
-        if (RetKindOf(obj, sel) != RET_OBJECT) return nil;
+        if (!obj || !sel) return nil;
+        Method m = class_getInstanceMethod(object_getClass(obj), sel);
+        if (!m) return nil;
+        const char *enc = method_getTypeEncoding(m);
+        if (!enc || enc[0] != '@') return nil;
         return ((id(*)(id, SEL))objc_msgSend)(obj, sel);
     } @catch (NSException *e) { return nil; }
 }
-
-// 对返回整型的 selector 使用 typed msgSend
 static long SafeMsgInt(id obj, SEL sel) {
     @try {
-        if (RetKindOf(obj, sel) != RET_INT) return -1;
+        if (!obj || !sel) return -1;
+        Method m = class_getInstanceMethod(object_getClass(obj), sel);
+        if (!m) return -1;
+        const char *enc = method_getTypeEncoding(m);
+        if (!enc) return -1;
+        char r = enc[0];
+        if (!(r=='q'||r=='Q'||r=='i'||r=='I'||r=='l'||r=='L'||r=='c'||r=='C'||r=='B')) return -1;
         return ((long(*)(id, SEL))objc_msgSend)(obj, sel);
     } @catch (NSException *e) { return -1; }
 }
 
-static void DumpKeyEvent(UIEvent *event) {
+// ===== 配置：/var/mobile/unikey.conf 每行 "键码=动作" =====
+// 动作: home | volup | voldown | shortcut:名字
+static NSDictionary *LoadConfig(void) {
+    static NSMutableDictionary *cached = nil;
+    static time_t cachedMtime = 0;
     @try {
-        // 1) UIPress 列表（对象安全）
-        id presses = SafeMsgObj(event, sel_registerName("allPresses"));
-        if ([presses isKindOfClass:[NSSet class]]) {
-            for (id press in presses) {
-                @try {
-                    long ptype = SafeMsgInt(press, sel_registerName("type"));
-                    long pphase = SafeMsgInt(press, sel_registerName("phase"));
-                    if (ptype >= 0) UKLog([NSString stringWithFormat:@"  press type=%ld(usage=0x%lx) phase=%ld", ptype, ptype & 0xFFFF, pphase]);
-                } @catch (NSException *e) { }
+        struct stat st;
+        if (stat("/var/mobile/unikey.conf", &st) != 0) return cached;
+        if (st.st_mtime == cachedMtime && cached) return cached;
+        NSMutableDictionary *map = [NSMutableDictionary dictionary];
+        FILE *f = fopen("/var/mobile/unikey.conf", "r");
+        if (f) {
+            char line[512];
+            while (fgets(line, sizeof(line), f)) {
+                NSString *s = [NSString stringWithUTF8String:line];
+                s = [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (s.length == 0 || [s hasPrefix:@"#"]) continue;
+                NSRange eq = [s rangeOfString:@"="];
+                if (eq.location == NSNotFound || eq.location == 0) continue;
+                NSString *key = [[s substringToIndex:eq.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                NSString *val = [[s substringFromIndex:eq.location+1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                long kt = [key longLongValue];
+                if (kt > 0 && val.length) [map setObject:val forKey:@(kt)];
             }
+            fclose(f);
         }
-        // 2) 修饰键与输入串（先查返回类型再调用）
-        long mf = SafeMsgInt(event, NSSelectorFromString(@"_modifierFlags"));
-        if (mf >= 0) UKLog([NSString stringWithFormat:@"  _modifierFlags=%ld(0x%lx)", mf, mf]);
-        long mf2 = SafeMsgInt(event, sel_registerName("modifierFlags"));
-        if (mf2 >= 0 && mf2 != mf) UKLog([NSString stringWithFormat:@"  modifierFlags=%ld(0x%lx)", mf2, mf2]);
-        id input = SafeMsgObj(event, sel_registerName("input"));
-        if (input) UKLog([NSString stringWithFormat:@"  input=%@", input]);
-        id chars = SafeMsgObj(event, NSSelectorFromString(@"_characters"));
-        if (chars) UKLog([NSString stringWithFormat:@"  _characters=%@", chars]);
-        // 3) 完整描述（截400字符）
-        @try {
-            NSString *desc = [event description];
-            if (desc.length > 400) desc = [desc substringToIndex:400];
-            desc = [desc stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
-            UKLog([NSString stringWithFormat:@"  desc=%@", desc]);
-        } @catch (NSException *e) { }
+        cachedMtime = st.st_mtime;
+        cached = map;
+        UKLog([NSString stringWithFormat:@"config loaded: %lu bindings", (unsigned long)map.count]);
+        return map;
+    } @catch (NSException *e) { return cached; }
+}
+
+// ===== 动作执行 =====
+static void RunAction(NSString *action) {
+    @try {
+        if ([action isEqualToString:@"home"]) {
+            Class c = objc_getClass("SBUIController");
+            id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
+            SEL sel = NSSelectorFromString(@"handleHomeButtonSinglePressUpForWindowScene:withSourceType:");
+            if (ctrl && [ctrl respondsToSelector:sel]) {
+                id scenes = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("connectedScenes"));
+                id scene = nil;
+                if ([scenes isKindOfClass:[NSSet class]]) scene = [scenes anyObject];
+                if (scene) ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
+            }
+            return;
+        }
+        if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
+            Class avc = objc_getClass("AVSystemController");
+            id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
+            if (!svc) return;
+            SEL getSel = NSSelectorFromString(@"getVolumeForCategory:volume:");
+            SEL setSel = NSSelectorFromString(@"setVolumeTo:forCategory:");
+            if (![svc respondsToSelector:getSel] || ![svc respondsToSelector:setSel]) return;
+            float vol = 0;
+            Method gm = class_getInstanceMethod(object_getClass(svc), getSel);
+            const char *ge = gm ? method_getTypeEncoding(gm) : "";
+            // getVolumeForCategory:volume: 第二参为 float* 指针出参
+            if (ge && ge[0]=='v') {
+                ((void(*)(id, SEL, id, float*))objc_msgSend)(svc, getSel, @"Audio/Video", &vol);
+            }
+            float nv = vol + ([action isEqualToString:@"volup"] ? 6.25f : -6.25f);
+            if (nv < 0) nv = 0; if (nv > 100) nv = 100;
+            ((int(*)(id, SEL, float, id))objc_msgSend)(svc, setSel, nv, @"Audio/Video");
+            return;
+        }
+        if ([action hasPrefix:@"shortcut:"]) {
+            NSString *name = [action substringFromIndex:9];
+            if (name.length == 0) return;
+            NSString *enc = [name stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+            NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"shortcuts://run-shortcut?name=%@", enc]];
+            if (!u) return;
+            id app = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("sharedApplication"));
+            SEL openSel = NSSelectorFromString(@"openURL:options:completionHandler:");
+            if (app && [app respondsToSelector:openSel]) {
+                ((void(*)(id, SEL, id, id, id))objc_msgSend)(app, openSel, u, @{}, nil);
+            }
+            return;
+        }
     } @catch (NSException *e) {
-        UKLog(@"dump exception caught");
+        UKLog([NSString stringWithFormat:@"action exception: %@", action]);
     }
+}
+
+static void DispatchAction(NSString *action) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        RunAction(action);
+    });
 }
 
 %hook UIApplication
 
 - (void)sendEvent:(UIEvent *)event {
     @try {
-        if (event.type == 4) { // 只记键盘事件
-            UKLog(@"KEY EVENT:");
-            DumpKeyEvent(event);
+        if (event.type == 4) {
+            NSDictionary *cfg = LoadConfig();
+            if (cfg.count) {
+                id presses = SafeMsgObj(event, sel_registerName("allPresses"));
+                if ([presses isKindOfClass:[NSSet class]]) {
+                    for (id press in presses) {
+                        long ptype = SafeMsgInt(press, sel_registerName("type"));
+                        long pphase = SafeMsgInt(press, sel_registerName("phase"));
+                        if (ptype > 0 && pphase == 0) {
+                            NSString *action = [cfg objectForKey:@(ptype)];
+                            if (action) {
+                                UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
+                                DispatchAction(action);
+                                return; // 吞掉事件
+                            }
+                        }
+                    }
+                }
+            }
         }
     } @catch (NSException *e) { }
     %orig;
@@ -98,5 +163,5 @@ static void DumpKeyEvent(UIEvent *event) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.3 loaded (type-aware recon)");
+    UKLog(@"unikey 0.4 loaded (remap engine)");
 }
