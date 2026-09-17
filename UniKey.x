@@ -77,14 +77,27 @@ static void RunAction(NSString *action) {
     @try {
         if ([action isEqualToString:@"home"]) {
             Class c = objc_getClass("SBUIController");
+            if (!c) { UKLog(@"home: SBUIController nil"); return; }
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
+            if (!ctrl) { UKLog(@"home: sharedInstance nil"); return; }
             SEL sel = NSSelectorFromString(@"handleHomeButtonSinglePressUpForWindowScene:withSourceType:");
-            if (ctrl && [ctrl respondsToSelector:sel]) {
-                id scenes = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("connectedScenes"));
-                id scene = nil;
-                if ([scenes isKindOfClass:[NSSet class]]) scene = [scenes anyObject];
-                if (scene) ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
+            if (![ctrl respondsToSelector:sel]) { UKLog(@"home: selector missing"); return; }
+            id scenes = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("connectedScenes"));
+            if (![scenes isKindOfClass:[NSSet class]]) { UKLog(@"home: no scenes"); return; }
+            id scene = nil;
+            for (id s in scenes) {
+                @try {
+                    SEL st = sel_registerName("activationState");
+                    if ([s respondsToSelector:st] && (((NSInteger(*)(id, SEL))objc_msgSend)(s, st)) == 0) {
+                        scene = s; break;
+                    }
+                } @catch (NSException *e) { }
             }
+            if (!scene) scene = [scenes anyObject];
+            if (!scene) { UKLog(@"home: no scene"); return; }
+            UKLog(@"home: dispatching press");
+            ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
+            UKLog(@"home: press done");
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
