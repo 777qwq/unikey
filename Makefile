@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = UniKey
 UniKey_FILES = UniKey.x
-UniKey_FRAMEWORKS = UIKit
+UniKey_FRAMEWORKS = UIKit QuartzCore
 UniKey_LDFLAGS = -undefined dynamic_lookup
 UniKey_CFLAGS = -fobjc-arc
 
