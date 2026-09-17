@@ -1,0 +1,52 @@
+name: Build CC Tile
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install theos
+        run: |
+          git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
+          mkdir -p $HOME/theos/sdks
+          ln -s "$(xcrun --sdk iphoneos --show-sdk-path)" $HOME/theos/sdks/iphoneos.sdk
+          GITHUB_TOKEN=${{ github.token }} bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+          git clone --depth 1 https://github.com/theos/dm.pl /tmp/dm.pl
+          cp /tmp/dm.pl/dm.pl $HOME/theos/bin/dm.pl && chmod +x $HOME/theos/bin/dm.pl
+          sed -i '' 's/convert binary1/convert xml1/' $HOME/theos/bin/convert_xml_plist.sh
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Show Xcode SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
+
+      - name: Build package
+        run: make package FINALPACKAGE=1
+        env:
+          THEOS_PACKAGE_SCHEME: rootless
+
+      - name: Inject postinst
+        run: |
+          brew install dpkg
+          DEB=$(ls packages/*.deb | head -1)
+          rm -rf /tmp/rp && mkdir -p /tmp/rp
+          dpkg-deb -R "$DEB" /tmp/rp
+          printf '#!/bin/sh\nkillall -9 SpringBoard 2>/dev/null || true\nexit 0\n' > /tmp/rp/DEBIAN/postinst
+          chmod 755 /tmp/rp/DEBIAN/postinst
+          rm -f "$DEB"
+          dpkg-deb --root-owner-group -b /tmp/rp "$DEB"
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: unikey-deb
+          path: packages/*.deb
+
