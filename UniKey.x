@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <QuartzCore/QuartzCore.h>
 
 static void UKLog(NSString *msg) {
     @try {
@@ -102,11 +103,14 @@ static void RunAction(NSString *action) {
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
             Class avc = objc_getClass("AVSystemController");
+            if (!avc) { UKLog(@"vol: AVSystemController nil"); return; }
             id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
-            if (!svc) return;
+            if (!svc) { UKLog(@"vol: sharedInstance nil"); return; }
+            UKLog(@"vol: controller ok");
             SEL getSel = NSSelectorFromString(@"getVolumeForCategory:volume:");
             SEL setSel = NSSelectorFromString(@"setVolumeTo:forCategory:");
-            if (![svc respondsToSelector:getSel] || ![svc respondsToSelector:setSel]) return;
+            if (![svc respondsToSelector:getSel]) { UKLog(@"vol: getSel missing"); return; }
+            if (![svc respondsToSelector:setSel]) { UKLog(@"vol: setSel missing"); return; }
             float vol = 0;
             Method gm = class_getInstanceMethod(object_getClass(svc), getSel);
             const char *ge = gm ? method_getTypeEncoding(gm) : "";
@@ -116,7 +120,9 @@ static void RunAction(NSString *action) {
             }
             float nv = vol + ([action isEqualToString:@"volup"] ? 6.25f : -6.25f);
             if (nv < 0) nv = 0; if (nv > 100) nv = 100;
+            UKLog([NSString stringWithFormat:@"vol: %.1f -> %.1f", vol, nv]);
             ((int(*)(id, SEL, float, id))objc_msgSend)(svc, setSel, nv, @"Audio/Video");
+            UKLog(@"vol: set done");
             return;
         }
         if ([action hasPrefix:@"shortcut:"]) {
@@ -158,6 +164,13 @@ static void DispatchAction(NSString *action) {
                         if (ptype > 0 && pphase == 0) {
                             NSString *action = [cfg objectForKey:@(ptype)];
                             if (action) {
+                                static long lastType = 0;
+                                static CFTimeInterval lastTime = 0;
+                                CFTimeInterval now = CACurrentMediaTime();
+                                if (ptype == lastType && (now - lastTime) < 0.2) {
+                                    return; // 双投递去重
+                                }
+                                lastType = ptype; lastTime = now;
                                 UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
                                 DispatchAction(action);
                                 return; // 吞掉事件
