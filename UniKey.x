@@ -253,7 +253,7 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
             [xml appendString:@"{ Filter = { Bundles = (\n"];
             NSFileManager *fm = [NSFileManager defaultManager];
             int count = 0;
-            NSArray *bases = @[@"/var/containers/Bundle/Application", @"/var/jb/Applications"];
+            NSArray *bases = @[@"/var/containers/Bundle/Application", @"/var/staged_system_apps", @"/var/jb/Applications"];
             for (NSString *base in bases) {
                 for (NSString *uuid in [fm contentsOfDirectoryAtPath:base error:nil]) {
                     NSString *dir = [base stringByAppendingPathComponent:uuid];
