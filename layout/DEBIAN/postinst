@@ -3,10 +3,12 @@ LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 ls -la "$JB/usr/bin/unikeygenfilter" >> $LOG 2>&1
-"$JB/usr/bin/unikeygenfilter" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
-echo "[postinst] genfilter exit=$?" >> $LOG
-head -c 300 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
-echo "" >> $LOG
+"$JB/usr/bin/unikeygenfilter" > /rootfs/var/mobile/unikey_gen.plist 2>> $LOG
+echo "[postinst] gen_exit=$?" >> $LOG
+cp /rootfs/var/mobile/unikey_gen.plist "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+echo "[postinst] cp_exit=$?" >> $LOG
 chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+head -c 150 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+echo "" >> $LOG
 echo "[postinst] done" >> $LOG
 exit 0
