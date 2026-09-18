@@ -246,5 +246,4 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
                                     NULL, TriggerCallback,
                                     CFSTR("com.user.unikey.run"), NULL,
                                     CFNotificationSuspensionBehaviorDeliverImmediately);
-    });
 }
