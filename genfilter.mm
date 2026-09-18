@@ -4,7 +4,6 @@
 
 int main(int argc, char **argv) {
     @autoreleasepool {
-        if (argc < 2) { printf("usage: rcgenfilter <out.plist>\n"); return 1; }
         NSMutableString *xml = [NSMutableString string];
         [xml appendString:@"{ Filter = { Bundles = (\n"];
         NSFileManager *fm = [NSFileManager defaultManager];
