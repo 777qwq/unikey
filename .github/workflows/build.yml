@@ -28,6 +28,13 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-path
           echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
 
+      - name: Build genfilter tool
+        run: |
+          xcrun -sdk $(xcrun --sdk iphoneos --show-sdk-path) clang -arch arm64 -fobjc-arc -framework Foundation genfilter.mm -o unikeygenfilter
+          $THEOS/bin/ldid -S unikeygenfilter
+          mkdir -p layout/usr/bin
+          cp unikeygenfilter layout/usr/bin/
+
       - name: Build package
         run: make package FINALPACKAGE=1
         env:
