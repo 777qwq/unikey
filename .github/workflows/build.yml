@@ -28,15 +28,6 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-path
           echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
 
-      - name: Build genfilter tool
-        run: |
-          xcrun -sdk $(xcrun --sdk iphoneos --show-sdk-path) clang -arch arm64 -fobjc-arc -framework Foundation genfilter.mm -o unikeygenfilter
-          LDID=$(find $HOME/theos /usr/local /opt/homebrew -name "ldid" -type f 2>/dev/null | head -1)
-          echo "ldid found: $LDID"
-          if [ -n "$LDID" ]; then $LDID -S unikeygenfilter; else brew install ldid && ldid -S unikeygenfilter; fi
-          mkdir -p layout/usr/bin
-          cp unikeygenfilter layout/usr/bin/
-
       - name: Fix maintainer script permissions
         run: |
           chmod +x layout/DEBIAN/postinst 2>/dev/null || true
