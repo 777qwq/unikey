@@ -3,6 +3,9 @@ LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 PLIST="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
+chflags nouchg "$PLIST" 2>> $LOG
+rm -f "$PLIST" 2>> $LOG
+echo "[postinst] unlock+delete exit=$?" >> $LOG
 cat > "$PLIST" <<'PLEOF'
 { Filter = { Classes = ("UIApplication"); }; }
 PLEOF
