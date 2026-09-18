@@ -1,4 +1,2 @@
 #!/bin/sh
-# 生成应用白名单（无killall，安全）
-/var/jb/usr/bin/unikeygenfilter /var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist 2>/dev/null
 exit 0
