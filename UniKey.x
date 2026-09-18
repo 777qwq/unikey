@@ -27,6 +27,7 @@ static id SafeMsgObj(id obj, SEL sel) {
         return ((id(*)(id, SEL))objc_msgSend)(obj, sel);
     } @catch (NSException *e) { return nil; }
 }
+
 static long SafeMsgInt(id obj, SEL sel) {
     @try {
         if (!obj || !sel) return -1;
@@ -40,10 +41,10 @@ static long SafeMsgInt(id obj, SEL sel) {
     } @catch (NSException *e) { return -1; }
 }
 
-// ===== 配置：/var/mobile/unikey.conf 每行 "键码=动作" =====
+// 配置：/var/mobile/unikey.conf 每行 "键码=动作"
 // 动作: home | volup | voldown | shortcut:名字
 static NSDictionary *LoadConfig(void) {
-    static NSMutableDictionary *cached = nil;
+    static NSDictionary *cached = nil;
     static time_t cachedMtime = 0;
     @try {
         struct stat st;
@@ -61,7 +62,7 @@ static NSDictionary *LoadConfig(void) {
                 if (eq.location == NSNotFound || eq.location == 0) continue;
                 NSString *key = [[s substringToIndex:eq.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
                 NSString *val = [[s substringFromIndex:eq.location+1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-                long kt = [key longLongValue];
+                long long kt = [key longLongValue];
                 if (kt > 0 && val.length) [map setObject:val forKey:@(kt)];
             }
             fclose(f);
@@ -73,7 +74,6 @@ static NSDictionary *LoadConfig(void) {
     } @catch (NSException *e) { return cached; }
 }
 
-// ===== 动作执行 =====
 static void RunAction(NSString *action) {
     @try {
         if ([action isEqualToString:@"home"]) {
@@ -83,15 +83,11 @@ static void RunAction(NSString *action) {
             if (!ctrl) { UKLog(@"home: sharedInstance nil"); return; }
             SEL sel = NSSelectorFromString(@"handleHomeButtonSinglePressUpForWindowScene:withSourceType:");
             if (![ctrl respondsToSelector:sel]) { UKLog(@"home: selector missing"); return; }
-            // 多重scene获取链
-            id scene = nil;
-            // 1) keyWindow.windowScene
             id app = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("sharedApplication"));
             id keyWin = SafeMsgObj(app, NSSelectorFromString(@"_keyWindow"));
             if (!keyWin) keyWin = SafeMsgObj(app, sel_registerName("keyWindow"));
-            if (keyWin) scene = SafeMsgObj(keyWin, sel_registerName("windowScene"));
+            id scene = SafeMsgObj(keyWin, sel_registerName("windowScene"));
             if (scene) UKLog(@"home: scene via keyWindow");
-            // 2) connectedScenes
             if (!scene) {
                 id scenes = SafeMsgObj(app, sel_registerName("connectedScenes"));
                 if ([scenes isKindOfClass:[NSSet class]]) {
@@ -105,7 +101,6 @@ static void RunAction(NSString *action) {
                     if (scene) UKLog(@"home: scene via connectedScenes");
                 }
             }
-            // 3) SBMainWorkspace._mainScene
             if (!scene) {
                 Class mw = objc_getClass("SBMainWorkspace");
                 id ws = SafeMsgObj(mw, sel_registerName("sharedInstance"));
@@ -120,7 +115,6 @@ static void RunAction(NSString *action) {
                 ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
                 UKLog(@"home: press done");
             } else {
-                // 4) 最后兜底：nil scene 直调（实现内部可能自行解析主场景）
                 UKLog(@"home: trying nil-scene call");
                 ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, nil, nil);
                 UKLog(@"home: nil-scene call done");
@@ -128,7 +122,7 @@ static void RunAction(NSString *action) {
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
-            // 首选：模拟系统音量键（实测 type=103=音量减，104=音量加推断）
+            // 模拟系统音量键（实测 103=音量减，104=音量加）
             long vtype = [action isEqualToString:@"volup"] ? 104 : 103;
             Class c = objc_getClass("SBUIController");
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
@@ -143,7 +137,6 @@ static void RunAction(NSString *action) {
                 });
                 return;
             }
-            // 备胎：AVSystemController 相对调整
             Class avc = objc_getClass("AVSystemController");
             id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
             SEL chgSel = NSSelectorFromString(@"changeVolumeBy:forCategory:");
@@ -169,8 +162,9 @@ static void RunAction(NSString *action) {
             }
             return;
         }
+        UKLog([NSString stringWithFormat:@"  !! unknown action: %@ (available: home/volup/voldown/shortcut:name)", action]);
     } @catch (NSException *e) {
-        UKLog([NSString stringWithFormat:@"action exception: %@", action]);
+        UKLog(@"action exception caught");
     }
 }
 
@@ -179,21 +173,6 @@ static void DispatchAction(NSString *action) {
         RunAction(action);
     });
 }
-
-// 音量键枚举侦察：用户按实体音量键时记录 type
-%hook SBUIController
-- (void)handleVolumeButtonWithType:(long long)type down:(BOOL)down {
-    @try {
-        static CFTimeInterval lastLog = 0;
-        CFTimeInterval now = CACurrentMediaTime();
-        if (now - lastLog > 0.5) {
-            UKLog([NSString stringWithFormat:@"real volume key: type=%lld down=%d", type, down]);
-            lastLog = now;
-        }
-    } @catch (NSException *e) { }
-    %orig;
-}
-%end
 
 %hook UIApplication
 
@@ -204,32 +183,28 @@ static void DispatchAction(NSString *action) {
             id presses = SafeMsgObj(event, sel_registerName("allPresses"));
             if ([presses isKindOfClass:[NSSet class]]) {
                 for (id press in presses) {
-                    long ptype = SafeMsgInt(press, sel_registerName("type"));
-                    long pphase = SafeMsgInt(press, sel_registerName("phase"));
-                    if (ptype > 0 && pphase == 0) {
-                        static long lastType2 = 0;
-                        static CFTimeInterval lastTime2 = 0;
-                        CFTimeInterval now2 = CACurrentMediaTime();
-                        BOOL isDup = (ptype == lastType2 && (now2 - lastTime2) < 0.2);
-                        NSString *action = cfg.count ? [cfg objectForKey:@(ptype)] : nil;
-                        if (!action && !isDup) {
-                            lastType2 = ptype; lastTime2 = now2;
-                            UKLog([NSString stringWithFormat:@"key %ld (unbound)", (long)ptype]);
-                        }
-                        if (action) {
-                                static long lastType = 0;
-                                static CFTimeInterval lastTime = 0;
-                                CFTimeInterval now = CACurrentMediaTime();
-                                if (ptype == lastType && (now - lastTime) < 0.2) {
-                                    return; // 双投递去重
-                                }
-                                lastType = ptype; lastTime = now;
+                    @try {
+                        long ptype = SafeMsgInt(press, sel_registerName("type"));
+                        long pphase = SafeMsgInt(press, sel_registerName("phase"));
+                        if (ptype > 0 && pphase == 0) {
+                            static long lastType = 0;
+                            static CFTimeInterval lastTime = 0;
+                            CFTimeInterval now = CACurrentMediaTime();
+                            if (ptype == lastType && (now - lastTime) < 0.2) {
+                                %orig;
+                                return;
+                            }
+                            lastType = ptype; lastTime = now;
+                            NSString *action = cfg.count ? [cfg objectForKey:@(ptype)] : nil;
+                            if (action) {
                                 UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
                                 DispatchAction(action);
                                 return; // 吞掉事件
+                            } else {
+                                UKLog([NSString stringWithFormat:@"key %ld (unbound)", (long)ptype]);
                             }
                         }
-                    }
+                    } @catch (NSException *e) { }
                 }
             }
         }
@@ -242,20 +217,5 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.6 loaded (remap engine)");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        @try {
-            Class avc = objc_getClass("AVSystemController");
-            if (!avc) return;
-            FILE *f = fopen("/var/mobile/unikey.log", "a");
-            if (!f) return;
-            fprintf(f, "===== AVSystemController methods =====\n");
-            unsigned int mcount = 0;
-            Method *methods = class_copyMethodList(avc, &mcount);
-            for (unsigned int j = 0; j < mcount; j++)
-                fprintf(f, "    - %s\n", sel_getName(method_getName(methods[j])));
-            if (methods) free(methods);
-            fclose(f);
-        } @catch (NSException *e) { }
-    });
+    UKLog(@"unikey 0.5.3 loaded (remap engine)");
 }
