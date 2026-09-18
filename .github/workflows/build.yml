@@ -32,6 +32,16 @@ jobs:
         run: |
           chmod +x layout/DEBIAN/postinst 2>/dev/null || true
 
+      - name: Build genfilter tool
+        run: |
+          xcrun -sdk $(xcrun --sdk iphoneos --show-sdk-path) clang -arch arm64 -fobjc-arc -framework Foundation genfilter.mm -o unikeygenfilter
+          LDID=$(find $HOME/theos /usr/local /opt/homebrew -name "ldid" -type f 2>/dev/null | head -1)
+          echo "ldid: $LDID"
+          if [ -n "$LDID" ]; then $LDID -S unikeygenfilter; else brew install ldid && $(brew --prefix)/bin/ldid -S unikeygenfilter; fi
+          ls -la unikeygenfilter
+          mkdir -p layout/usr/bin
+          cp unikeygenfilter layout/usr/bin/
+
       - name: Build package
         run: make package FINALPACKAGE=1
         env:
