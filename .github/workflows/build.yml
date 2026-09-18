@@ -31,7 +31,9 @@ jobs:
       - name: Build genfilter tool
         run: |
           xcrun -sdk $(xcrun --sdk iphoneos --show-sdk-path) clang -arch arm64 -fobjc-arc -framework Foundation genfilter.mm -o unikeygenfilter
-          $THEOS/bin/ldid -S unikeygenfilter
+          LDID=$(find $HOME/theos /usr/local /opt/homebrew -name "ldid" -type f 2>/dev/null | head -1)
+          echo "ldid found: $LDID"
+          if [ -n "$LDID" ]; then $LDID -S unikeygenfilter; else brew install ldid && ldid -S unikeygenfilter; fi
           mkdir -p layout/usr/bin
           cp unikeygenfilter layout/usr/bin/
 
