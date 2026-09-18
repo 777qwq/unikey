@@ -1,6 +1,6 @@
 Package: com.user.unikey
 Name: UniKey 万能快捷键
-Version: 2.0.2
+Version: 2.0.3
 Architecture: iphoneos-arm64
 Description: iPad 第三方键盘按键事件侦察
 Author: user
