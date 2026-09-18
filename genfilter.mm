@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
         }
         [xml appendString:@"); } }"];
         NSError *werr = nil;
-        BOOL ok = [xml writeToFile:[NSString stringWithUTF8String:argv[1]] options:0 error:&werr];
+        BOOL ok = [xml writeToFile:[NSString stringWithUTF8String:argv[1]] atomically:NO encoding:NSUTF8StringEncoding error:&werr];
         if (!ok) {
             printf("NSString write FAILED: %s\n", werr ? werr.localizedDescription.UTF8String : "?");
             FILE *fp = fopen(argv[1], "w");
