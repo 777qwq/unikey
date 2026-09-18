@@ -52,9 +52,7 @@ int main(int argc, char **argv) {
         }
         [xml appendString:@"); } }"];
         printf("%s", xml.UTF8String);
-        printf("generated %d bundles -> %s\n", count, argv[1]);
-        return 0;
-        printf("generated %d bundles -> %s\n", count, argv[1]);
+        fprintf(stderr, "generated %d bundles\n", count);
         return 0;
     }
 }
