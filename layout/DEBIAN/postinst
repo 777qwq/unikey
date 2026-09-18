@@ -1,4 +1,10 @@
 #!/bin/sh
-# 让SB(mobile)可以覆写白名单文件
-chmod 666 /var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist 2>/dev/null
+LOG=/rootfs/var/mobile/unikey_postinst.log
+echo "[postinst] start $(date)" >> $LOG
+JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
+echo "[postinst] JB=$JB" >> $LOG
+ls -la "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+chmod 666 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+echo "[postinst] chmod exit=$?" >> $LOG
+ls -la "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
 exit 0
