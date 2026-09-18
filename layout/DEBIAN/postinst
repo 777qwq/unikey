@@ -32,6 +32,27 @@ if [ "$NB" -eq 0 ]; then
   done
 fi
 echo "[postinst] found bundles=$NB execs=$NE" >> $LOG
+if [ "$NB" -eq 0 ]; then
+  echo "[postinst] tools check:" >> $LOG
+  ls -la /usr/libexec/PlistBuddy >> $LOG 2>&1
+  ls -la /usr/bin/plutil >> $LOG 2>&1
+  ls -la /bin/plutil >> $LOG 2>&1
+  CNT=0
+  for UUIDDIR in /var/containers/Bundle/Application/*/; do
+    CNT=$((CNT+1))
+    if [ $CNT -gt 2 ]; then break; fi
+    echo "[postinst] uuid dir: $UUIDDIR" >> $LOG
+    ls "$UUIDDIR" >> $LOG 2>&1
+    for APPD in "$UUIDDIR"*.app; do
+      [ -d "$APPD" ] || continue
+      echo "[postinst] appdir: $APPD" >> $LOG
+      ls "$APPD" | head -5 >> $LOG 2>&1
+      /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPD/Info.plist" >> $LOG 2>&1
+      plutil -extract CFBundleIdentifier raw "$APPD/Info.plist" >> $LOG 2>&1
+      break
+    done
+  done
+fi
 cat /rootfs/var/mobile/unikey_tb.tmp >> /rootfs/var/mobile/unikey_out.tmp
 echo ");" >> /rootfs/var/mobile/unikey_out.tmp
 echo "Executables = (" >> /rootfs/var/mobile/unikey_out.tmp
