@@ -20,7 +20,7 @@ for BASE in "$JB/var/containers/Bundle/Application" "$JB/Applications" "/rootfs/
     esac
   done
 done
-echo "); } }" >> $TMP
+echo "); }; }" >> $TMP
 N=$(wc -l < $TMP)
 cp "$TMP" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
 echo "[postinst] whitelist entries=$N cp_exit=$?" >> $LOG
