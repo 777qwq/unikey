@@ -2,11 +2,11 @@
 LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
-if [ -f "$JB/Library/MobileSubstrate/DynamicLibraries/RCSpeakerApp.plist" ]; then
-  cp "$JB/Library/MobileSubstrate/DynamicLibraries/RCSpeakerApp.plist" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-  echo "[postinst] copied speaker whitelist cp_exit=$?" >> $LOG
-  chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-else
-  echo "[postinst] speaker whitelist not found" >> $LOG
-fi
+ls -la "$JB/usr/bin/unikeygenfilter" >> $LOG 2>&1
+"$JB/usr/bin/unikeygenfilter" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+echo "[postinst] genfilter exit=$?" >> $LOG
+head -c 300 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+echo "" >> $LOG
+chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+echo "[postinst] done" >> $LOG
 exit 0
