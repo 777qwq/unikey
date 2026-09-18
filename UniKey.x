@@ -277,7 +277,7 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
             [xml appendString:@"); } }"];
             NSError *werr = nil;
             BOOL ok = [xml writeToFile:@"/var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
-                            atomically:YES encoding:NSUTF8StringEncoding error:&werr];
+                            atomically:NO encoding:NSUTF8StringEncoding error:&werr];
             UKLog([NSString stringWithFormat:@"whitelist write: ok=%d err=%@", ok, werr ? werr.localizedDescription : @"none"]);
             UKLog([NSString stringWithFormat:@"app whitelist generated: %d bundles", count]);
             UKLog([NSString stringWithFormat:@"whitelist ids: %@", [[xml componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "]]);
