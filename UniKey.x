@@ -222,19 +222,20 @@ static void DispatchAction(NSString *action) {
 
 %end
 
-static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     @try {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            @try {
-                NSString *action = [NSString stringWithContentsOfFile:@"/var/mobile/unikey_trigger.txt"
-                                                             encoding:NSUTF8StringEncoding error:nil];
-                action = [action stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                if (action.length) {
-                    UKLog([NSString stringWithFormat:@"app trigger: %@", action]);
-                    RunAction(action);
-                }
-            } @catch (NSException *e) { }
-        });
+        NSString *nameStr = (__bridge NSString *)name;
+        if (![nameStr hasPrefix:@"com.user.unikey.key."]) return;
+        long code = [[nameStr substringFromIndex:20] longLongValue];
+        if (code <= 0) return;
+        NSDictionary *cfg = LoadConfig();
+        NSString *action = [cfg objectForKey:@(code)];
+        if (action) {
+            UKLog([NSString stringWithFormat:@"app key %ld -> %@", (long)code, action]);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                RunAction(action);
+            });
+        }
     } @catch (NSException *e) { }
 }
 
@@ -242,8 +243,11 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
     UKLog(@"unikey 2.0 loaded (SB side)");
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
-                                    NULL, TriggerCallback,
-                                    CFSTR("com.user.unikey.run"), NULL,
-                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+    for (int code = 2000; code <= 2600; code++) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL, KeyNotifyCallback,
+                                        (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
+    UKLog(@"key notify observers registered (2000-2600)");
 }
