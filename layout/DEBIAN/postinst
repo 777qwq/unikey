@@ -1,11 +1,11 @@
 #!/bin/sh
 LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
-JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
-echo "[postinst] JB=$JB" >> $LOG
-rm -f /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp
+rm -f /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp /rootfs/var/mobile/unikey_out.tmp
+touch /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp
 echo "{ Filter = { Bundles = (" > /rootfs/var/mobile/unikey_out.tmp
-for BASE in "$JB/var/containers/Bundle/Application" "$JB/Applications" "/rootfs/var/staged_system_apps" "/var/staged_system_apps"; do
+NB=0; NE=0
+for BASE in "/var/containers/Bundle/Application" "/rootfs/var/containers/Bundle/Application" "/var/staged_system_apps" "/rootfs/var/staged_system_apps" "/var/jb/Applications" "/rootfs/var/jb/Applications"; do
   for APPDIR in "$BASE"/*/*.app; do
     [ -d "$APPDIR" ] || continue
     BID=""; EXE=""
@@ -18,20 +18,22 @@ for BASE in "$JB/var/containers/Bundle/Application" "$JB/Applications" "/rootfs/
       EXE=$(plutil -extract CFBundleExecutable raw "$APPDIR/Info.plist" 2>/dev/null)
     fi
     case "$BID" in
-      *.*) echo "\"$BID\"," >> /rootfs/var/mobile/unikey_tb.tmp ;;
+      *.*) echo "\"$BID\"," >> /rootfs/var/mobile/unikey_tb.tmp; NB=$((NB+1)) ;;
     esac
     case "$EXE" in
-      *[A-Za-z]*) echo "\"$(echo "$EXE" | tr 'A-Z' 'a-z')\"," >> /rootfs/var/mobile/unikey_te.tmp ;;
+      *[A-Za-z]*) echo "\"$(echo "$EXE" | tr 'A-Z' 'a-z')\"," >> /rootfs/var/mobile/unikey_te.tmp; NE=$((NE+1)) ;;
     esac
   done
 done
+echo "[postinst] found bundles=$NB execs=$NE" >> $LOG
 cat /rootfs/var/mobile/unikey_tb.tmp >> /rootfs/var/mobile/unikey_out.tmp
 echo ");" >> /rootfs/var/mobile/unikey_out.tmp
 echo "Executables = (" >> /rootfs/var/mobile/unikey_out.tmp
 cat /rootfs/var/mobile/unikey_te.tmp >> /rootfs/var/mobile/unikey_out.tmp
 echo "); }; }" >> /rootfs/var/mobile/unikey_out.tmp
+JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 cp /rootfs/var/mobile/unikey_out.tmp "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-echo "[postinst] whitelist updated cp_exit=$?" >> $LOG
+echo "[postinst] whitelist written cp_exit=$?" >> $LOG
 chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
 rm -f /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp /rootfs/var/mobile/unikey_out.tmp
 echo "[postinst] done" >> $LOG
