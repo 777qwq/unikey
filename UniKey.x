@@ -111,7 +111,7 @@ static void RunAction(NSString *action) {
                 id ws = SafeMsgObj(mw, sel_registerName("sharedInstance"));
                 if (ws) {
                     scene = SafeMsgObj(ws, NSSelectorFromString(@"_mainScene"));
-                    if (!scene) scene = SafeMsgObj(ws, sel_registerName(@"mainScene"));
+                    if (!scene) scene = SafeMsgObj(ws, NSSelectorFromString(@"mainScene"));
                     if (scene) UKLog(@"home: scene via SBMainWorkspace");
                 }
             }
