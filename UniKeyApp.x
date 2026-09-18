@@ -105,7 +105,7 @@ static NSDictionary *LoadConfig(void) {
                                 if (action) {
                                     UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
                                     // 写触发文件 + 通知SB执行
-                                    [@action writeToFile:@"/var/mobile/unikey_trigger.txt"
+                                    [action writeToFile:@"/var/mobile/unikey_trigger.txt"
                                               atomically:YES encoding:NSUTF8StringEncoding error:nil];
                                     notify_post("com.user.unikey.run");
                                     return; // 吞掉事件
