@@ -1,2 +1,4 @@
 #!/bin/sh
+# 让SB(mobile)可以覆写白名单文件
+chmod 666 /var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist 2>/dev/null
 exit 0
