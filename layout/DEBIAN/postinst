@@ -8,7 +8,8 @@ echo "[postinst] gen_exit=$?" >> $LOG
 cp /rootfs/var/mobile/unikey_gen.plist "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
 echo "[postinst] cp_exit=$?" >> $LOG
 chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-head -c 150 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
-echo "" >> $LOG
+echo "[postinst] ===== FULL FILE =====" >> $LOG
+cat -n "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+echo "[postinst] ===== END =====" >> $LOG
 echo "[postinst] done" >> $LOG
 exit 0
