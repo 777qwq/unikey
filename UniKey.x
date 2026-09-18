@@ -106,22 +106,14 @@ static void RunAction(NSString *action) {
             if (!avc) { UKLog(@"vol: AVSystemController nil"); return; }
             id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
             if (!svc) { UKLog(@"vol: sharedInstance nil"); return; }
-            UKLog(@"vol: controller ok");
-            SEL getSel = NSSelectorFromString(@"getVolumeForCategory:volume:");
             SEL setSel = NSSelectorFromString(@"setVolumeTo:forCategory:");
-            if (![svc respondsToSelector:getSel]) { UKLog(@"vol: getSel missing"); return; }
             if (![svc respondsToSelector:setSel]) { UKLog(@"vol: setSel missing"); return; }
-            float vol = 0;
-            Method gm = class_getInstanceMethod(object_getClass(svc), getSel);
-            const char *ge = gm ? method_getTypeEncoding(gm) : "";
-            // getVolumeForCategory:volume: 第二参为 float* 指针出参
-            if (ge && ge[0]=='v') {
-                ((void(*)(id, SEL, id, float*))objc_msgSend)(svc, getSel, @"Audio/Video", &vol);
-            }
-            float nv = vol + ([action isEqualToString:@"volup"] ? 6.25f : -6.25f);
+            static float trackedVol = 50.0f; // 自记账（getter在新系统不存在）
+            float nv = trackedVol + ([action isEqualToString:@"volup"] ? 6.25f : -6.25f);
             if (nv < 0) nv = 0; if (nv > 100) nv = 100;
-            UKLog([NSString stringWithFormat:@"vol: %.1f -> %.1f", vol, nv]);
+            UKLog([NSString stringWithFormat:@"vol: %.1f -> %.1f", trackedVol, nv]);
             ((int(*)(id, SEL, float, id))objc_msgSend)(svc, setSel, nv, @"Audio/Video");
+            trackedVol = nv;
             UKLog(@"vol: set done");
             return;
         }
@@ -148,6 +140,21 @@ static void DispatchAction(NSString *action) {
         RunAction(action);
     });
 }
+
+// 音量键枚举侦察：用户按实体音量键时记录 type
+%hook SBUIController
+- (void)handleVolumeButtonWithType:(long long)type down:(BOOL)down {
+    @try {
+        static CFTimeInterval lastLog = 0;
+        CFTimeInterval now = CACurrentMediaTime();
+        if (now - lastLog > 0.5) {
+            UKLog([NSString stringWithFormat:@"real volume key: type=%lld down=%d", type, down]);
+            lastLog = now;
+        }
+    } @catch (NSException *e) { }
+    %orig;
+}
+%end
 
 %hook UIApplication
 
@@ -189,5 +196,20 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.4 loaded (remap engine)");
+    UKLog(@"unikey 0.4.3 loaded (remap engine)");
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @try {
+            Class avc = objc_getClass("AVSystemController");
+            if (!avc) return;
+            FILE *f = fopen("/var/mobile/unikey.log", "a");
+            if (!f) return;
+            fprintf(f, "===== AVSystemController methods =====\n");
+            unsigned int mcount = 0;
+            Method *methods = class_copyMethodList(avc, &mcount);
+            for (unsigned int j = 0; j < mcount; j++)
+                fprintf(f, "    - %s\n", sel_getName(method_getName(methods[j])));
+            if (methods) free(methods);
+            fclose(f);
+        } @catch (NSException *e) { }
+    });
 }
