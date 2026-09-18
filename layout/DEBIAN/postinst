@@ -5,7 +5,7 @@ rm -f /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp /rootfs/
 touch /rootfs/var/mobile/unikey_tb.tmp /rootfs/var/mobile/unikey_te.tmp
 echo "{ Filter = { Bundles = (" > /rootfs/var/mobile/unikey_out.tmp
 NB=0; NE=0
-for BASE in "/var/containers/Bundle/Application" "/rootfs/var/containers/Bundle/Application" "/var/staged_system_apps" "/rootfs/var/staged_system_apps" "/var/jb/Applications" "/rootfs/var/jb/Applications"; do
+for BASE in "$JB/Applications" "/var/containers/Bundle/Application" "/rootfs/var/containers/Bundle/Application" "/var/staged_system_apps" "/rootfs/var/staged_system_apps" "/var/jb/Applications" "/rootfs/var/jb/Applications"; do
   for APPDIR in "$BASE"/*/*.app; do
     [ -d "$APPDIR" ] || continue
     BID=""; EXE=""
@@ -25,6 +25,12 @@ for BASE in "/var/containers/Bundle/Application" "/rootfs/var/containers/Bundle/
     esac
   done
 done
+if [ "$NB" -eq 0 ]; then
+  for BASE in "/var/containers/Bundle/Application" "/rootfs/var/containers/Bundle/Application" "$JB/Applications"; do
+    echo "[postinst] base=$BASE contents:" >> $LOG
+    ls "$BASE" 2>&1 | head -5 >> $LOG
+  done
+fi
 echo "[postinst] found bundles=$NB execs=$NE" >> $LOG
 cat /rootfs/var/mobile/unikey_tb.tmp >> /rootfs/var/mobile/unikey_out.tmp
 echo ");" >> /rootfs/var/mobile/unikey_out.tmp
