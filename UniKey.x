@@ -76,7 +76,7 @@ static NSDictionary *LoadConfig(void) {
 
 static void RunAction(NSString *action) {
     @try {
-        if ([action isEqualToString:@"home"]) {
+        if ([action caseInsensitiveCompare:@"home"] == NSOrderedSame) {
             Class c = objc_getClass("SBUIController");
             if (!c) { UKLog(@"home: SBUIController nil"); return; }
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
@@ -121,9 +121,9 @@ static void RunAction(NSString *action) {
             }
             return;
         }
-        if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
+        if ([action caseInsensitiveCompare:@"volup"] == NSOrderedSame || [action caseInsensitiveCompare:@"voldown"] == NSOrderedSame) {
             // 模拟系统音量键（实测 103=音量减，102=音量加）
-            long vtype = [action isEqualToString:@"volup"] ? 102 : 103;
+            long vtype = ([action caseInsensitiveCompare:@"volup"] == NSOrderedSame) ? 102 : 103;
             Class c = objc_getClass("SBUIController");
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
             SEL sel = NSSelectorFromString(@"handleVolumeButtonWithType:down:");
@@ -141,7 +141,7 @@ static void RunAction(NSString *action) {
             id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
             SEL chgSel = NSSelectorFromString(@"changeVolumeBy:forCategory:");
             if (svc && [svc respondsToSelector:chgSel]) {
-                float delta = [action isEqualToString:@"volup"] ? 0.0625f : -0.0625f;
+                float delta = ([action caseInsensitiveCompare:@"volup"] == NSOrderedSame) ? 0.0625f : -0.0625f;
                 UKLog(@"vol: changeVolumeBy fallback");
                 ((int(*)(id, SEL, float, id))objc_msgSend)(svc, chgSel, delta, @"Audio/Video");
             } else {
@@ -149,7 +149,7 @@ static void RunAction(NSString *action) {
             }
             return;
         }
-        if ([action hasPrefix:@"shortcut:"]) {
+        if ([action length] > 9 && [[action substringToIndex:9] caseInsensitiveCompare:@"shortcut:"] == NSOrderedSame) {
             NSString *name = [action substringFromIndex:9];
             if (name.length == 0) return;
             NSString *enc = [name stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
@@ -217,5 +217,5 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 1.0 loaded (remap engine)");
+    UKLog(@"unikey 1.0.1 loaded (remap engine)");
 }
