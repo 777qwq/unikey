@@ -2,14 +2,22 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <notify.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <QuartzCore/QuartzCore.h>
 
+#define LOG_PATH "/var/mobile/unikey.log"
+#define LOG_CAP (180*1024)
+
 static void UKLog(NSString *msg) {
     @try {
-        FILE *f = fopen("/var/mobile/unikey.log", "a");
+        struct stat st;
+        if (stat(LOG_PATH, &st) == 0 && st.st_size > LOG_CAP) {
+            remove(LOG_PATH); // 200kB自动封顶
+        }
+        FILE *f = fopen(LOG_PATH, "a");
         if (!f) return;
         time_t t = time(NULL); struct tm tmv; localtime_r(&t, &tmv);
         fprintf(f, "[UK %02d:%02d:%02d] %s\n", tmv.tm_hour, tmv.tm_min, tmv.tm_sec, msg.UTF8String);
@@ -214,8 +222,28 @@ static void DispatchAction(NSString *action) {
 
 %end
 
+static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+    @try {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try {
+                NSString *action = [NSString stringWithContentsOfFile:@"/var/mobile/unikey_trigger.txt"
+                                                             encoding:NSUTF8StringEncoding error:nil];
+                action = [action stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (action.length) {
+                    UKLog([NSString stringWithFormat:@"app trigger: %@", action]);
+                    RunAction(action);
+                }
+            } @catch (NSException *e) { }
+        });
+    } @catch (NSException *e) { }
+}
+
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 1.0.1 loaded (remap engine)");
+    UKLog(@"unikey 2.0 loaded (SB side)");
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    NULL, TriggerCallback,
+                                    CFSTR("com.user.unikey.run"), NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
 }
