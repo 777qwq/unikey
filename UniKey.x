@@ -278,6 +278,7 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
             [xml writeToFile:@"/var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
                   atomically:YES encoding:NSUTF8StringEncoding error:nil];
             UKLog([NSString stringWithFormat:@"app whitelist generated: %d bundles", count]);
+            UKLog([NSString stringWithFormat:@"whitelist ids: %@", [[xml componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "]]);
         } @catch (NSException *e) {
             UKLog(@"whitelist generation exception");
         }
