@@ -1,0 +1,57 @@
+#import <Foundation/Foundation.h>
+#import <MobileCoreServices/MobileCoreServices.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+    @autoreleasepool {
+        if (argc < 2) { printf("usage: rcgenfilter <out.plist>\n"); return 1; }
+        NSMutableString *xml = [NSMutableString string];
+        [xml appendString:@"{ Filter = { Bundles = (\n"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        int count = 0;
+        NSArray *bases = @[@"/var/containers/Bundle/Application",
+                           @"/var/jb/Applications",
+                           @"/var/jb/Applications"];
+        for (NSString *base in bases) {
+            for (NSString *uuid in [fm contentsOfDirectoryAtPath:base error:nil]) {
+                NSString *dir = [base stringByAppendingPathComponent:uuid];
+                BOOL isDir = NO;
+                if (![fm fileExistsAtPath:dir isDirectory:&isDir] || !isDir) continue;
+                NSString *infoPath = nil;
+                if ([dir hasSuffix:@".app"]) {
+                    infoPath = [dir stringByAppendingPathComponent:@"Info.plist"];
+                } else {
+                    for (NSString *item in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+                        if (![item hasSuffix:@".app"]) continue;
+                        infoPath = [[dir stringByAppendingPathComponent:item] stringByAppendingPathComponent:@"Info.plist"];
+                        NSData *d = [NSData dataWithContentsOfFile:infoPath];
+                        if (!d) continue;
+                        @try {
+                            id plist = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:nil];
+                            NSString *bid = [plist objectForKey:@"CFBundleIdentifier"];
+                            if (bid.length > 0 && [bid containsString:@"."]) {
+                                [xml appendFormat:@"\"%@\",\n", bid];
+                                count++;
+                            }
+                        } @catch (NSException *e) {}
+                    }
+                    continue;
+                }
+                NSData *d = [NSData dataWithContentsOfFile:infoPath];
+                if (!d) continue;
+                @try {
+                    id plist = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:nil];
+                    NSString *bid = [plist objectForKey:@"CFBundleIdentifier"];
+                    if (bid.length > 0 && [bid containsString:@"."]) {
+                        [xml appendFormat:@"\"%@\",\n", bid];
+                        count++;
+                    }
+                } @catch (NSException *e) {}
+            }
+        }
+        [xml appendString:@"); } }"];
+        [xml writeToFile:[NSString stringWithUTF8String:argv[1]] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        printf("generated %d bundles -> %s\n", count, argv[1]);
+        return 0;
+    }
+}
