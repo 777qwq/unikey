@@ -102,8 +102,8 @@ static void RunAction(NSString *action) {
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
-            // 首选：模拟系统音量键（实测 type=103=音量加，104=音量减推断）
-            long vtype = [action isEqualToString:@"volup"] ? 103 : 104;
+            // 首选：模拟系统音量键（实测 type=103=音量减，104=音量加推断）
+            long vtype = [action isEqualToString:@"volup"] ? 104 : 103;
             Class c = objc_getClass("SBUIController");
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
             SEL sel = NSSelectorFromString(@"handleVolumeButtonWithType:down:");
@@ -209,7 +209,7 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.5 loaded (remap engine)");
+    UKLog(@"unikey 0.5.1 loaded (remap engine)");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         @try {
             Class avc = objc_getClass("AVSystemController");
