@@ -3,28 +3,41 @@ LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 echo "[postinst] JB=$JB" >> $LOG
-TMP=/rootfs/var/mobile/unikey_whitelist.tmp
-echo "{ Filter = { Bundles = (" > $TMP
+TB=/rootfs/var/mobile/unikey_b.tmp
+TE=/rootfs/var/mobile/unikey_e.tmp
+echo "{ Filter = { Bundles = (" > $TB
+echo "{ Filter = { Executables = (" > $TE
+NB=0; NE=0
 for BASE in "$JB/var/containers/Bundle/Application" "$JB/Applications" "/rootfs/var/staged_system_apps" "/var/staged_system_apps"; do
   for APPDIR in "$BASE"/*/*.app; do
     [ -d "$APPDIR" ] || continue
-    BID=""
+    BID=""; EXE=""
     if [ -x /usr/libexec/PlistBuddy ]; then
       BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPDIR/Info.plist" 2>/dev/null)
+      EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APPDIR/Info.plist" 2>/dev/null)
     fi
     if [ -z "$BID" ] && [ -x /usr/bin/plutil ]; then
       BID=$(plutil -extract CFBundleIdentifier raw "$APPDIR/Info.plist" 2>/dev/null)
+      EXE=$(plutil -extract CFBundleExecutable raw "$APPDIR/Info.plist" 2>/dev/null)
     fi
     case "$BID" in
-      *.*) echo "\"$BID\"," >> $TMP ;;
+      *.*) echo "\"$BID\"," >> $TB; NB=$((NB+1)) ;;
+    esac
+    case "$EXE" in
+      *[A-Za-z]*) echo "\"$(echo "$EXE" | tr 'A-Z' 'a-z')\"," >> $TE; NE=$((NE+1)) ;;
     esac
   done
 done
-echo "); }; }" >> $TMP
-N=$(wc -l < $TMP)
-cp "$TMP" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-echo "[postinst] whitelist entries=$N cp_exit=$?" >> $LOG
+echo "); } }" >> $TB
+echo "); }; }" >> $TE
+echo "{ Filter = { Bundles = (" > /rootfs/var/mobile/unikey_out.tmp
+cat $TB | tail -n +2 >> /rootfs/var/mobile/unikey_out.tmp
+echo "); Executables = (" >> /rootfs/var/mobile/unikey_out.tmp
+cat $TE | tail -n +2 >> /rootfs/var/mobile/unikey_out.tmp
+echo "); }; }" >> /rootfs/var/mobile/unikey_out.tmp
+cp /rootfs/var/mobile/unikey_out.tmp "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+echo "[postinst] bundles=$NB execs=$NE cp_exit=$?" >> $LOG
 chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-rm -f $TMP
+rm -f $TB $TE /rootfs/var/mobile/unikey_out.tmp
 echo "[postinst] done" >> $LOG
 exit 0
