@@ -246,4 +246,40 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
                                     NULL, TriggerCallback,
                                     CFSTR("com.user.unikey.run"), NULL,
                                     CFNotificationSuspensionBehaviorDeliverImmediately);
+    // App白名单自生成（每次注销刷新，无需外部工具）
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @try {
+            NSMutableString *xml = [NSMutableString string];
+            [xml appendString:@"{ Filter = { Bundles = (\n"];
+            NSFileManager *fm = [NSFileManager defaultManager];
+            int count = 0;
+            NSArray *bases = @[@"/var/containers/Bundle/Application", @"/var/jb/Applications"];
+            for (NSString *base in bases) {
+                for (NSString *uuid in [fm contentsOfDirectoryAtPath:base error:nil]) {
+                    NSString *dir = [base stringByAppendingPathComponent:uuid];
+                    BOOL isDir = NO;
+                    if (![fm fileExistsAtPath:dir isDirectory:&isDir] || !isDir) continue;
+                    NSString *appPath = nil;
+                    for (NSString *item in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+                        if ([item hasSuffix:@".app"]) { appPath = [dir stringByAppendingPathComponent:item]; break; }
+                    }
+                    if (!appPath) continue;
+                    @try {
+                        NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[appPath stringByAppendingPathComponent:@"Info.plist"]];
+                        NSString *bid = info[@"CFBundleIdentifier"];
+                        if (bid.length > 0 && [bid containsString:@"."] && ![bid isEqualToString:@"com.apple.springboard"]) {
+                            [xml appendFormat:@"\"%@\",\n", bid];
+                            count++;
+                        }
+                    } @catch (NSException *e) { }
+                }
+            }
+            [xml appendString:@"); } }"];
+            [xml writeToFile:@"/var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
+                  atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            UKLog([NSString stringWithFormat:@"app whitelist generated: %d bundles", count]);
+        } @catch (NSException *e) {
+            UKLog(@"whitelist generation exception");
+        }
+    });
 }
