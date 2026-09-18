@@ -274,7 +274,7 @@ static void TriggerCallback(CFNotificationCenterRef center, void *observer, CFSt
                     } @catch (NSException *e) { }
                 }
             }
-            [xml appendString:@"); } }"];
+            [xml appendString:@"); }; }"];
             NSError *werr = nil;
             BOOL ok = [xml writeToFile:@"/var/jb/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
                             atomically:NO encoding:NSUTF8StringEncoding error:&werr];
