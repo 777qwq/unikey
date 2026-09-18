@@ -2,14 +2,12 @@
 LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
-ls -la "$JB/usr/bin/unikeygenfilter" >> $LOG 2>&1
-"$JB/usr/bin/unikeygenfilter" > /rootfs/var/mobile/unikey_gen.plist 2>> $LOG
-echo "[postinst] gen_exit=$?" >> $LOG
-cp /rootfs/var/mobile/unikey_gen.plist "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-echo "[postinst] cp_exit=$?" >> $LOG
-chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-echo "[postinst] ===== FULL FILE =====" >> $LOG
-cat -n "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
-echo "[postinst] ===== END =====" >> $LOG
+PLIST="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
+cat > "$PLIST" <<'PLEOF'
+{ Filter = { Classes = ("UIApplication"); }; }
+PLEOF
+echo "[postinst] write exit=$?" >> $LOG
+chmod 644 "$PLIST" 2>> $LOG
+echo "[postinst] head: $(head -c 80 "$PLIST")" >> $LOG
 echo "[postinst] done" >> $LOG
 exit 0
