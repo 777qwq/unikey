@@ -52,16 +52,7 @@ int main(int argc, char **argv) {
             }
         }
         [xml appendString:@"); } }"];
-        NSError *werr = nil;
-        BOOL ok = [xml writeToFile:[NSString stringWithUTF8String:argv[1]] atomically:NO encoding:NSUTF8StringEncoding error:&werr];
-        if (!ok) {
-            printf("NSString write FAILED: %s\n", werr ? werr.localizedDescription.UTF8String : "?");
-            FILE *fp = fopen(argv[1], "w");
-            if (!fp) { printf("stdio fallback FAILED (cannot open)\n"); return 2; }
-            fputs(xml.UTF8String, fp);
-            fclose(fp);
-            printf("written via stdio fallback\n");
-        }
+        printf("%s", xml.UTF8String);
         printf("generated %d bundles -> %s\n", count, argv[1]);
         return 0;
         printf("generated %d bundles -> %s\n", count, argv[1]);
