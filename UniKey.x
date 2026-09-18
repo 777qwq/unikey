@@ -83,22 +83,48 @@ static void RunAction(NSString *action) {
             if (!ctrl) { UKLog(@"home: sharedInstance nil"); return; }
             SEL sel = NSSelectorFromString(@"handleHomeButtonSinglePressUpForWindowScene:withSourceType:");
             if (![ctrl respondsToSelector:sel]) { UKLog(@"home: selector missing"); return; }
-            id scenes = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("connectedScenes"));
-            if (![scenes isKindOfClass:[NSSet class]]) { UKLog(@"home: no scenes"); return; }
+            // 多重scene获取链
             id scene = nil;
-            for (id s in scenes) {
-                @try {
-                    SEL st = sel_registerName("activationState");
-                    if ([s respondsToSelector:st] && (((NSInteger(*)(id, SEL))objc_msgSend)(s, st)) == 0) {
-                        scene = s; break;
+            // 1) keyWindow.windowScene
+            id app = SafeMsgObj(objc_getClass("UIApplication"), sel_registerName("sharedApplication"));
+            id keyWin = SafeMsgObj(app, NSSelectorFromString(@"_keyWindow"));
+            if (!keyWin) keyWin = SafeMsgObj(app, sel_registerName("keyWindow"));
+            if (keyWin) scene = SafeMsgObj(keyWin, sel_registerName("windowScene"));
+            if (scene) UKLog(@"home: scene via keyWindow");
+            // 2) connectedScenes
+            if (!scene) {
+                id scenes = SafeMsgObj(app, sel_registerName("connectedScenes"));
+                if ([scenes isKindOfClass:[NSSet class]]) {
+                    for (id s in scenes) {
+                        @try {
+                            SEL st = sel_registerName("activationState");
+                            if ([s respondsToSelector:st] && (((NSInteger(*)(id, SEL))objc_msgSend)(s, st)) == 0) { scene = s; break; }
+                        } @catch (NSException *e) { }
                     }
-                } @catch (NSException *e) { }
+                    if (!scene) scene = [scenes anyObject];
+                    if (scene) UKLog(@"home: scene via connectedScenes");
+                }
             }
-            if (!scene) scene = [scenes anyObject];
-            if (!scene) { UKLog(@"home: no scene"); return; }
-            UKLog(@"home: dispatching press");
-            ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
-            UKLog(@"home: press done");
+            // 3) SBMainWorkspace._mainScene
+            if (!scene) {
+                Class mw = objc_getClass("SBMainWorkspace");
+                id ws = SafeMsgObj(mw, sel_registerName("sharedInstance"));
+                if (ws) {
+                    scene = SafeMsgObj(ws, NSSelectorFromString(@"_mainScene"));
+                    if (!scene) scene = SafeMsgObj(ws, sel_registerName(@"mainScene"));
+                    if (scene) UKLog(@"home: scene via SBMainWorkspace");
+                }
+            }
+            if (scene) {
+                UKLog(@"home: dispatching press");
+                ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, scene, nil);
+                UKLog(@"home: press done");
+            } else {
+                // 4) 最后兜底：nil scene 直调（实现内部可能自行解析主场景）
+                UKLog(@"home: trying nil-scene call");
+                ((void(*)(id, SEL, id, id))objc_msgSend)(ctrl, sel, nil, nil);
+                UKLog(@"home: nil-scene call done");
+            }
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
@@ -209,7 +235,7 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.5.1 loaded (remap engine)");
+    UKLog(@"unikey 0.6 loaded (remap engine)");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         @try {
             Class avc = objc_getClass("AVSystemController");
