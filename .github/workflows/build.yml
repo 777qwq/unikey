@@ -37,6 +37,10 @@ jobs:
           mkdir -p layout/usr/bin
           cp unikeygenfilter layout/usr/bin/
 
+      - name: Fix maintainer script permissions
+        run: |
+          chmod +x layout/DEBIAN/postinst 2>/dev/null || true
+
       - name: Build package
         run: make package FINALPACKAGE=1
         env:
