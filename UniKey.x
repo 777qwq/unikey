@@ -122,8 +122,8 @@ static void RunAction(NSString *action) {
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
-            // 模拟系统音量键（实测 103=音量减，104=音量加）
-            long vtype = [action isEqualToString:@"volup"] ? 104 : 103;
+            // 模拟系统音量键（实测 103=音量减，102=音量加）
+            long vtype = [action isEqualToString:@"volup"] ? 102 : 103;
             Class c = objc_getClass("SBUIController");
             id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
             SEL sel = NSSelectorFromString(@"handleVolumeButtonWithType:down:");
@@ -217,5 +217,5 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.5.3 loaded (remap engine)");
+    UKLog(@"unikey 1.0 loaded (remap engine)");
 }
