@@ -66,6 +66,9 @@ static NSDictionary *LoadConfig(void) {
             }
             fclose(f);
         }
+        for (NSString *k in [map allKeys]) {
+            map[k] = NormalizeAction(map[k]);
+        }
         cachedMtime = st.st_mtime;
         cached = map;
         UKLog([NSString stringWithFormat:@"config loaded: %lu bindings", (unsigned long)map.count]);
@@ -74,6 +77,23 @@ static NSDictionary *LoadConfig(void) {
 }
 
 // ===== 动作执行 =====
+// 中文别名标准化
+static NSString *NormalizeAction(NSString *action) {
+    @try {
+        if ([action hasPrefix:@"shortcut:"] || [action hasPrefix:@"快捷指令:"] || [action hasPrefix:@"指令:"]) {
+            NSString *name = [action substringFromIndex:([action rangeOfString:@":"].location + 1)];
+            return [NSString stringWithFormat:@"shortcut:%@", name];
+        }
+        NSDictionary *aliases = @{
+            @"音量+": @"volup", @"音量加": @"volup", @"音量up": @"volup", @"加音量": @"volup", @"volup": @"volup",
+            @"音量-": @"voldown", @"音量减": @"voldown", @"音量down": @"voldown", @"减音量": @"voldown", @"voldown": @"voldown",
+            @"home": @"home", @"回主屏": @"home", @"主屏": @"home", @"返回桌面": @"home", @"回到主屏": @"home", @"桌面": @"home",
+        };
+        NSString *std = aliases[action];
+        return std ?: action;
+    } @catch (NSException *e) { return action; }
+}
+
 static void RunAction(NSString *action) {
     @try {
         if ([action isEqualToString:@"home"]) {
@@ -218,6 +238,10 @@ static void DispatchAction(NSString *action) {
                                 }
                                 lastType = ptype; lastTime = now;
                                 UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
+                                if (![action isEqualToString:@"home"] && ![action isEqualToString:@"volup"] &&
+                                    ![action isEqualToString:@"voldown"] && ![action hasPrefix:@"shortcut:"]) {
+                                    UKLog(@"  !! 未知动作名，可用: home/volup/voldown/快捷指令:名字");
+                                }
                                 DispatchAction(action);
                                 return; // 吞掉事件
                             }
