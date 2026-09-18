@@ -3,8 +3,28 @@ LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 echo "[postinst] JB=$JB" >> $LOG
-ls -la "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
-chmod 666 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
-echo "[postinst] chmod exit=$?" >> $LOG
-ls -la "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" >> $LOG 2>&1
+TMP=/rootfs/var/mobile/unikey_whitelist.tmp
+echo "{ Filter = { Bundles = (" > $TMP
+for BASE in "$JB/var/containers/Bundle/Application" "$JB/Applications" "/rootfs/var/staged_system_apps" "/var/staged_system_apps"; do
+  for APPDIR in "$BASE"/*/*.app; do
+    [ -d "$APPDIR" ] || continue
+    BID=""
+    if [ -x /usr/libexec/PlistBuddy ]; then
+      BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPDIR/Info.plist" 2>/dev/null)
+    fi
+    if [ -z "$BID" ] && [ -x /usr/bin/plutil ]; then
+      BID=$(plutil -extract CFBundleIdentifier raw "$APPDIR/Info.plist" 2>/dev/null)
+    fi
+    case "$BID" in
+      *.*) echo "\"$BID\"," >> $TMP ;;
+    esac
+  done
+done
+echo "); } }" >> $TMP
+N=$(wc -l < $TMP)
+cp "$TMP" "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+echo "[postinst] whitelist entries=$N cp_exit=$?" >> $LOG
+chmod 644 "$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist" 2>> $LOG
+rm -f $TMP
+echo "[postinst] done" >> $LOG
 exit 0
