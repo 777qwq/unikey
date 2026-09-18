@@ -102,19 +102,32 @@ static void RunAction(NSString *action) {
             return;
         }
         if ([action isEqualToString:@"volup"] || [action isEqualToString:@"voldown"]) {
+            // 首选：模拟系统音量键（实测 type=103=音量加，104=音量减推断）
+            long vtype = [action isEqualToString:@"volup"] ? 103 : 104;
+            Class c = objc_getClass("SBUIController");
+            id ctrl = SafeMsgObj(c, sel_registerName("sharedInstance"));
+            SEL sel = NSSelectorFromString(@"handleVolumeButtonWithType:down:");
+            if (ctrl && [ctrl respondsToSelector:sel]) {
+                UKLog([NSString stringWithFormat:@"vol: simulating key %ld", vtype]);
+                ((void(*)(id, SEL, long long, BOOL))objc_msgSend)(ctrl, sel, (long long)vtype, YES);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    @try {
+                        ((void(*)(id, SEL, long long, BOOL))objc_msgSend)(ctrl, sel, (long long)vtype, NO);
+                    } @catch (NSException *e) { }
+                });
+                return;
+            }
+            // 备胎：AVSystemController 相对调整
             Class avc = objc_getClass("AVSystemController");
-            if (!avc) { UKLog(@"vol: AVSystemController nil"); return; }
             id svc = SafeMsgObj(avc, sel_registerName("sharedAVSystemController"));
-            if (!svc) { UKLog(@"vol: sharedInstance nil"); return; }
-            SEL setSel = NSSelectorFromString(@"setVolumeTo:forCategory:");
-            if (![svc respondsToSelector:setSel]) { UKLog(@"vol: setSel missing"); return; }
-            static float trackedVol = 50.0f; // 自记账（getter在新系统不存在）
-            float nv = trackedVol + ([action isEqualToString:@"volup"] ? 6.25f : -6.25f);
-            if (nv < 0) nv = 0; if (nv > 100) nv = 100;
-            UKLog([NSString stringWithFormat:@"vol: %.1f -> %.1f", trackedVol, nv]);
-            ((int(*)(id, SEL, float, id))objc_msgSend)(svc, setSel, nv, @"Audio/Video");
-            trackedVol = nv;
-            UKLog(@"vol: set done");
+            SEL chgSel = NSSelectorFromString(@"changeVolumeBy:forCategory:");
+            if (svc && [svc respondsToSelector:chgSel]) {
+                float delta = [action isEqualToString:@"volup"] ? 0.0625f : -0.0625f;
+                UKLog(@"vol: changeVolumeBy fallback");
+                ((int(*)(id, SEL, float, id))objc_msgSend)(svc, chgSel, delta, @"Audio/Video");
+            } else {
+                UKLog(@"vol: no path available");
+            }
             return;
         }
         if ([action hasPrefix:@"shortcut:"]) {
@@ -196,7 +209,7 @@ static void DispatchAction(NSString *action) {
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 0.4.3 loaded (remap engine)");
+    UKLog(@"unikey 0.5 loaded (remap engine)");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         @try {
             Class avc = objc_getClass("AVSystemController");
