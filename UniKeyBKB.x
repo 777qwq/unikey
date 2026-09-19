@@ -66,6 +66,10 @@ static void UKInspectHID(UKHIDEventRef ev) {
     }
 }
 
+// ---- 钩子体：分发/连接分发路径 ----
+static void uk_hook_client(void *client, UKHIDEventRef ev) { UKInspectHID(ev); uk_clientDispatch(client, ev); }
+static void uk_hook_conn(void *conn, UKHIDEventRef ev) { UKInspectHID(ev); uk_connDispatch(conn, ev); }
+
 typedef struct { UKEventCallback cb; void *target; void *refcon; } UKCbCtx;
 
 static void UKCbFwd(void *target, void *refcon, void *queue, UKHIDEventRef ev) {
