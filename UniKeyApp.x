@@ -20,12 +20,10 @@
 // void IOHIDEventSystemClientDispatchEvent(IOHIDEventSystemClientRef, IOHIDEventRef)
 // void IOHIDEventSystemConnectionDispatchEvent(IOHIDEventSystemConnectionRef, IOHIDEventRef)
 typedef struct __IOHIDEvent *UKHIDEventRef;
-extern "C" {
 unsigned int IOHIDEventGetType(UKHIDEventRef event);
 int IOHIDEventGetIntegerValue(UKHIDEventRef event, unsigned int field);
 void IOHIDEventSystemClientDispatchEvent(void *client, UKHIDEventRef event);
 void IOHIDEventSystemConnectionDispatchEvent(void *connection, UKHIDEventRef event);
-}
 
 static long g_lastCode = 0;
 static CFTimeInterval g_lastTime = 0;
