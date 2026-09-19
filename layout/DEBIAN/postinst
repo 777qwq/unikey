@@ -2,15 +2,32 @@
 LOG=/rootfs/var/mobile/unikey_postinst.log
 echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
+
+# ---- 1. App侧过滤器 ----
 PLIST="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
 chflags nouchg "$PLIST" 2>> $LOG
 rm -f "$PLIST" 2>> $LOG
-echo "[postinst] unlock+delete exit=$?" >> $LOG
 cat > "$PLIST" <<'PLEOF'
 { Filter = { Classes = ("UIApplication"); }; }
 PLEOF
-echo "[postinst] write exit=$?" >> $LOG
-chmod 644 "$PLIST" 2>> $LOG
+chmod 644 "$PLIST"
+echo "[postinst] app filter write exit=$?" >> $LOG
+
+# ---- 2. 佳影守护进程 DYLD 注入（ElleKit 不进 daemon，手动塞）----
+DP="$JB/Library/LaunchDaemons/com.zjx.ldysdaemon.plist"
+DY="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
+if [ -f "$DP" ]; then
+    chflags nouchg "$DP" 2>> $LOG
+    plutil -remove EnvironmentVariables "$DP" 2>> $LOG
+    plutil -insert EnvironmentVariables -dict "$DP" 2>> $LOG
+    plutil -insert EnvironmentVariables.DYLD_INSERT_LIBRARIES -string "$DY" "$DP" 2>> $LOG
+    echo "[postinst] daemon plist exit=$? dy=$DY" >> $LOG
+    launchctl kickstart -k system/com.zjx.ldysdaemon 2>> $LOG
+    echo "[postinst] kickstart exit=$?" >> $LOG
+else
+    echo "[postinst] daemon plist missing: $DP" >> $LOG
+fi
+
 echo "[postinst] head: $(head -c 80 "$PLIST")" >> $LOG
 echo "[postinst] done" >> $LOG
 exit 0

@@ -19,7 +19,7 @@
 // ButtonDown=0x20004 ButtonNumber=0x20001
 // void MSHookFunction(void *symbol, void *replace, void **result)  // ellekit 提供
 typedef struct __IOHIDEvent *UKHIDEventRef;
-void MSHookFunction(void *symbol, void *replace, void **result);
+static void (*uk_hookfn)(void *, void *, void **); // MSHookFunction 运行时解析
 
 static unsigned int (*uk_evGetType)(UKHIDEventRef);
 static int (*uk_evGetInt)(UKHIDEventRef, unsigned int);
@@ -116,9 +116,11 @@ static void UKInstallHIDHooks(void) {
     void *dn = dlsym(RTLD_DEFAULT, "IOHIDEventSystemConnectionDispatchEvent");
     void *rc = dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientRegisterEventCallback");
     if (!uk_evGetType || !uk_evGetInt || !dc || !dn) { NSLog(@"[UniKeyBKB] dlsym incomplete"); return; }
-    MSHookFunction(dc, (void *)uk_hook_client, (void **)&uk_clientDispatch);
-    MSHookFunction(dn, (void *)uk_hook_conn, (void **)&uk_connDispatch);
-    if (rc) MSHookFunction(rc, (void *)uk_hook_register, (void **)&uk_origRegister);
+    uk_hookfn = (void (*)(void *, void *, void **))dlsym(RTLD_DEFAULT, "MSHookFunction");
+    if (!uk_hookfn) { NSLog(@"[UniKeyBKB] no substrate in this process"); return; }
+    uk_hookfn(dc, (void *)uk_hook_client, (void **)&uk_clientDispatch);
+    uk_hookfn(dn, (void *)uk_hook_conn, (void **)&uk_connDispatch);
+    if (rc) uk_hookfn(rc, (void *)uk_hook_register, (void **)&uk_origRegister);
     g_hidState = 1;
     NSString *pn = NSProcessInfo.processInfo.processName ?: @"";
     g_isDaemon = [pn isEqualToString:@"ldysdaemon"];
