@@ -5,7 +5,7 @@ ARCHS := arm64 arm64e
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = UniKey UniKeyApp
+TWEAK_NAME = UniKey UniKeyApp UniKeyBKB
 UniKey_FILES = UniKey.x
 UniKey_FRAMEWORKS = UIKit QuartzCore
 UniKey_LDFLAGS = -undefined dynamic_lookup
@@ -15,5 +15,10 @@ UniKeyApp_FILES = UniKeyApp.x
 UniKeyApp_FRAMEWORKS = UIKit QuartzCore
 UniKeyApp_LDFLAGS = -undefined dynamic_lookup
 UniKeyApp_CFLAGS = -fobjc-arc
+
+UniKeyBKB_FILES = UniKeyBKB.x
+UniKeyBKB_FRAMEWORKS = Foundation
+UniKeyBKB_LDFLAGS = -undefined dynamic_lookup
+UniKeyBKB_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/tweak.mk

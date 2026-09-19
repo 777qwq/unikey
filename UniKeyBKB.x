@@ -1,0 +1,117 @@
+#import <Foundation/Foundation.h>
+#import <notify.h>
+#import <dlfcn.h>
+#import <mach/mach_time.h>
+#import <stdlib.h>
+
+// BackBoard 侧 v2.7.0：系统级键盘监视
+// backboardd = 全系统 HID 事件第一站：外设盒子游戏模式在 App 进程内不发键盘事件
+// （佳影守护进程在系统层吃键再注入触摸），只能在源头截获。
+// 仅 HID 三路钩（与 UniKeyApp L2 相同代码，已在多 App 验证稳定），无 UIEvent 钩。
+// 键盘 usage → 2000+usage（F5=2062，与 UIEvent 路径约定一致）
+// 手柄按键 → 2600+btn；诊断：9996 = backboardd 装载成功
+// 注意：backboardd 崩溃 = 安全模式，本文件保持极简，禁止新增文件/网络操作
+
+// kIOHIDEventTypeKeyboard=3 / Button=2 / Digitizer=11
+// Usage=0x30001 Down=0x30002 Repeat=0x30003
+// ButtonDown=0x20004 ButtonNumber=0x20001
+// void MSHookFunction(void *symbol, void *replace, void **result)  // ellekit 提供
+typedef struct __IOHIDEvent *UKHIDEventRef;
+void MSHookFunction(void *symbol, void *replace, void **result);
+
+static unsigned int (*uk_evGetType)(UKHIDEventRef);
+static int (*uk_evGetInt)(UKHIDEventRef, unsigned int);
+static void (*uk_clientDispatch)(void *, UKHIDEventRef);
+static void (*uk_connDispatch)(void *, UKHIDEventRef);
+typedef void (*UKEventCallback)(void *target, void *refcon, void *queue, UKHIDEventRef event);
+typedef void (*UKRegisterFn)(void *client, UKEventCallback cb, void *target, void *refcon);
+static UKRegisterFn uk_origRegister;
+
+static long g_lastCode = 0;
+static double g_lastTime = 0;
+static int g_hidState = 0;
+static BOOL g_sawReg = NO;
+
+static void UKDiag(int code) {
+    @try { notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%d", code] UTF8String]); } @catch (NSException *e) { }
+}
+
+static void UKPost(long code) {
+    @try {
+        if (code <= 0) return;
+        double now = (double)mach_absolute_time() / 1000000000.0; // arm64 iOS = ns
+        if (code == g_lastCode && (now - g_lastTime) < 0.2) return;
+        g_lastCode = code; g_lastTime = now;
+        notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", code] UTF8String]);
+    } @catch (NSException *e) { }
+}
+
+static void UKInspectHID(UKHIDEventRef ev) {
+    if (!ev || !uk_evGetType || !uk_evGetInt) return;
+    unsigned int t = uk_evGetType(ev);
+    if (t == 11) return; // digitizer/触摸：高频
+    if (t == 3) { // 键盘
+        int repeat = uk_evGetInt(ev, 0x30003);
+        if (repeat != 0) return;
+        int down = uk_evGetInt(ev, 0x30002);
+        int usage = uk_evGetInt(ev, 0x30001);
+        if (down > 0 && usage > 0) UKPost(2000 + usage);
+        return;
+    }
+    if (t == 2) { // Button/手柄
+        int down = uk_evGetInt(ev, 0x20004);
+        int btn = uk_evGetInt(ev, 0x20001);
+        if (down == 1 && btn > 0) UKPost(2600 + btn);
+        return;
+    }
+}
+
+typedef struct { UKEventCallback cb; void *target; void *refcon; } UKCbCtx;
+
+static void UKCbFwd(void *target, void *refcon, void *queue, UKHIDEventRef ev) {
+    UKCbCtx *ctx = (UKCbCtx *)target;
+    if (ctx && ctx->cb) ctx->cb(ctx->target, ctx->refcon, queue, ev);
+}
+
+static void uk_wrapped_cb(void *target, void *refcon, void *queue, UKHIDEventRef ev) {
+    @try { UKInspectHID(ev); } @catch (NSException *e) { }
+    UKCbFwd(target, refcon, queue, ev);
+}
+
+static void uk_hook_register(void *client, UKEventCallback cb, void *target, void *refcon) {
+    @try {
+        if (cb) {
+            UKCbCtx *ctx = (UKCbCtx *)malloc(sizeof(UKCbCtx));
+            if (ctx) {
+                ctx->cb = cb; ctx->target = target; ctx->refcon = refcon;
+                g_sawReg = YES;
+                uk_origRegister(client, uk_wrapped_cb, ctx, NULL);
+                return;
+            }
+        }
+        uk_origRegister(client, cb, target, refcon);
+    } @catch (NSException *e) { }
+}
+
+static void UKInstallHIDHooks(void) {
+    if (g_hidState) return;
+    uk_evGetType = (unsigned int (*)(UKHIDEventRef))dlsym(RTLD_DEFAULT, "IOHIDEventGetType");
+    uk_evGetInt = (int (*)(UKHIDEventRef, unsigned int))dlsym(RTLD_DEFAULT, "IOHIDEventGetIntegerValue");
+    void *dc = dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientDispatchEvent");
+    void *dn = dlsym(RTLD_DEFAULT, "IOHIDEventSystemConnectionDispatchEvent");
+    void *rc = dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientRegisterEventCallback");
+    if (!uk_evGetType || !uk_evGetInt || !dc || !dn) { NSLog(@"[UniKeyBKB] dlsym incomplete"); return; }
+    MSHookFunction(dc, (void *)uk_hook_client, (void **)&uk_clientDispatch);
+    MSHookFunction(dn, (void *)uk_hook_conn, (void **)&uk_connDispatch);
+    if (rc) MSHookFunction(rc, (void *)uk_hook_register, (void **)&uk_origRegister);
+    g_hidState = 1;
+    NSLog(@"[UniKeyBKB] installed dc=%p dn=%p rc=%p reg=%d", dc, dn, rc, g_sawReg);
+    UKDiag(9996);
+}
+
+%ctor {
+    // 构造函数延迟执行铁律；backboardd IOKit 必已加载
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UKInstallHIDHooks();
+    });
+}
