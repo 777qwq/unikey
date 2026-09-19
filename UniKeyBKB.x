@@ -33,6 +33,7 @@ static long g_lastCode = 0;
 static double g_lastTime = 0;
 static int g_hidState = 0;
 static BOOL g_sawReg = NO;
+static BOOL g_isDaemon = NO; // 运行于 ldysdaemon（佳影守护进程）
 static BOOL g_sawKb = NO;   // BKB首次见到键盘事件 → 9997
 
 static void UKDiag(int code) {
@@ -60,7 +61,7 @@ static void UKInspectHID(UKHIDEventRef ev) {
         notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%lu", 3000UL + (unsigned long)t] UTF8String]);
     }
     if (t == 3) { // 键盘
-        if (!g_sawKb) { g_sawKb = YES; UKDiag(9997); }
+        if (!g_sawKb) { g_sawKb = YES; UKDiag(g_isDaemon ? 9988 : 9997); }
         int repeat = uk_evGetInt(ev, 0x30003);
         if (repeat != 0) return;
         int down = uk_evGetInt(ev, 0x30002);
@@ -119,8 +120,10 @@ static void UKInstallHIDHooks(void) {
     MSHookFunction(dn, (void *)uk_hook_conn, (void **)&uk_connDispatch);
     if (rc) MSHookFunction(rc, (void *)uk_hook_register, (void **)&uk_origRegister);
     g_hidState = 1;
-    NSLog(@"[UniKeyBKB] installed dc=%p dn=%p rc=%p reg=%d", dc, dn, rc, g_sawReg);
-    UKDiag(9996);
+    NSString *pn = NSProcessInfo.processInfo.processName ?: @"";
+    g_isDaemon = [pn isEqualToString:@"ldysdaemon"];
+    NSLog(@"[UniKeyBKB] installed in %@ dc=%p dn=%p rc=%p reg=%d", pn, dc, dn, rc, g_sawReg);
+    UKDiag(g_isDaemon ? 9989 : 9996);
 }
 
 static void UKImageAdded(const struct mach_header *mh, intptr_t slide) {
