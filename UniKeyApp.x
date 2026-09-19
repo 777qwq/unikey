@@ -9,18 +9,16 @@
 #import <mach-o/dyld.h>
 #include <QuartzCore/QuartzCore.h>
 
-// App侧 = 哑中继 v2.6.2：双层捕获 + 诊断直通（零文件操作，沙盒免疫）
-//  L1 UIApplication sendEvent —— 常规 App 按键路径（抖音已验证）
+// UniKey 2.9.0 定版（App侧）：双层捕获，零日志、零诊断
+//  L1 UIApplication sendEvent —— 常规 App 按键路径（抖音/主屏已验证）
 //  L2 IOHIDEvent HID 层三路挂钩：
 //    a) IOHIDEventSystemClientDispatchEvent（分发路径）
 //    b) IOHIDEventSystemConnectionDispatchEvent（连接分发路径）
-//    c) IOHIDEventSystemClientRegisterEventCallback 包裹（回调注册路径，GameController 系）
+//    c) IOHIDEventSystemClientRegisterEventCallback 包裹（回调注册路径）
 //  IOKit 镜像加载瞬间安装（_dyld_register_func_for_add_image），不赌加载时序
-//  诊断通知：9990=已挂钩 9991=IOKit超时未加载 9992=进程内见到键盘事件 9994=回调包裹生效
-// 统一 200ms 去重 → notify_post("com.user.unikey.key.<HID usage+2000>")
+//  200ms 去重 → notify_post("com.user.unikey.key.<HID usage+2000>")
 
 // kIOHIDEventTypeKeyboard=3; Usage=0x30001; Down=0x30002; Repeat=0x30003
-// typedef void(*IOHIDEventSystemClientEventCallback)(void* target, void* refcon, IOHIDEventQueueRef queue, IOHIDEventRef event)
 // void IOHIDEventSystemClientRegisterEventCallback(client, callback, target, refcon)
 typedef struct __IOHIDEvent *UKHIDEventRef;
 void MSHookFunction(void *symbol, void *replace, void **result);
@@ -36,13 +34,6 @@ static UKRegisterFn uk_origRegister;
 static long g_lastCode = 0;
 static CFTimeInterval g_lastTime = 0;
 static int g_hidState = 0;   // 0=未装 1=已装
-static BOOL g_sawKb = NO;    // 首个键盘事件诊断（每进程一次）
-static BOOL g_sawReg = NO;   // 首次回调包裹诊断
-static BOOL g_sawButton = NO; // 首个手柄按键事件诊断
-
-static void UKDiag(int code) {
-    @try { notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%d", code] UTF8String]); } @catch (NSException *e) { }
-}
 
 static void UKPost(long code) {
     @try {
@@ -59,7 +50,6 @@ static void UKInspectHID(UKHIDEventRef ev) {
     unsigned int t = uk_evGetType(ev);
     if (t == 11) return; // digitizer/触摸：高频，直接滤掉
     if (t == 3) { // 键盘
-        if (!g_sawKb) { g_sawKb = YES; UKDiag(9992); }
         int repeat = uk_evGetInt(ev, 0x30003);
         if (repeat != 0) return;
         int down = uk_evGetInt(ev, 0x30002);
@@ -67,14 +57,7 @@ static void UKInspectHID(UKHIDEventRef ev) {
         if (down > 0 && usage > 0) UKPost(2000 + usage);
         return;
     }
-    if (t == 2) { // Button/手柄：外设盒子在游戏里把键盘翻译成手柄键
-        if (!g_sawButton) { g_sawButton = YES; UKDiag(9995); }
-        int down = uk_evGetInt(ev, 0x20004); // kIOHIDEventFieldButtonDown
-        int btn = uk_evGetInt(ev, 0x20001);  // kIOHIDEventFieldButtonNumber
-        if (down == 1 && btn > 0) UKPost(2600 + btn); // 手柄代码空间，与键盘隔离
-        return;
-    }
-    // 其余类型（旋转/滚轮等）忽略
+    // 其余类型（旋转/滚轮/手柄等）忽略
 }
 
 // ---- L2 挂钩体（覆盖三路收包/分发）----
@@ -91,7 +74,6 @@ static void uk_hook_register(void *client, UKEventCallback cb, void *target, voi
     UKCbCtx *ctx = (UKCbCtx *)malloc(sizeof(UKCbCtx));
     if (ctx && cb && uk_origRegister) {
         ctx->cb = cb; ctx->target = target; ctx->refcon = refcon;
-        if (!g_sawReg) { g_sawReg = YES; UKDiag(9994); }
         uk_origRegister(client, uk_wrapped_cb, ctx, NULL);
         return;
     }
@@ -112,7 +94,6 @@ static void UKInstallHIDHooks(void) {
         MSHookFunction(dn, (void *)uk_hook_conn, (void **)&uk_connDispatch);
         if (rc && uk_origRegister == NULL) MSHookFunction(rc, (void *)uk_hook_register, (void **)&uk_origRegister);
         g_hidState = 1;
-        UKDiag(9990);
     } @catch (NSException *e) { }
 }
 
@@ -157,11 +138,6 @@ static void UKImageAdded(const struct mach_header *mh, intptr_t slide) {
 %ctor {
     NSString *bid = NSBundle.mainBundle.bundleIdentifier;
     if (!bid || [bid isEqualToString:@"com.apple.springboard"]) return;
-    NSLog(@"[UniKeyApp] 2.6.3 relay loaded in %@", bid);
     // IOKit 已加载则注册即触发；未加载则等加载瞬间（先于任何回调注册）
     _dyld_register_func_for_add_image(UKImageAdded);
-    // 兜底：10 秒后仍未挂钩 = IOKit 始终未加载
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (!g_hidState) UKDiag(9991);
-    });
 }

@@ -1,55 +1,20 @@
 #!/bin/sh
-LOG=/rootfs/var/mobile/unikey_postinst.log
-echo "[postinst] start $(date)" >> $LOG
 JB=$(ls -d /var/containers/Bundle/Application/.jbroot-* 2>/dev/null | head -1)
 
-# ---- 1. App侧过滤器 ----
+# 1. App侧过滤器（Classes=UIApplication）
 PLIST="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyApp.plist"
-chflags nouchg "$PLIST" 2>> $LOG
-rm -f "$PLIST" 2>> $LOG
+chflags nouchg "$PLIST" 2>/dev/null
+rm -f "$PLIST" 2>/dev/null
 cat > "$PLIST" <<'PLEOF'
 { Filter = { Classes = ("UIApplication"); }; }
 PLEOF
 chmod 644 "$PLIST"
-echo "[postinst] app filter write exit=$?" >> $LOG
 
-# ---- 2. 佳影守护进程 DYLD 注入（ElleKit 不进 daemon，手动塞）----
+# 2. 清理 2.8.x 佳影守护进程实验残留（还原 plist）
 DP="$JB/Library/LaunchDaemons/com.zjx.ldysdaemon.plist"
-JBREAL=${JB#/rootfs}
-DY="$JBREAL/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
-PROG="$JBREAL/usr/local/bin/ldysdaemon"
 if [ -f "$DP" ]; then
-    chflags nouchg "$DP" 2>> $LOG
-    cat > "$DP" <<PLEOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>EnvironmentVariables</key>
-	<dict>
-		<key>DYLD_INSERT_LIBRARIES</key>
-		<string>$DY</string>
-	</dict>
-	<key>KeepAlive</key>
-	<true/>
-	<key>Label</key>
-	<string>com.zjx.ldysdaemon</string>
-	<key>Program</key>
-	<string>$PROG</string>
-	<key>RunAtLoad</key>
-	<true/>
-	<key>__Patched</key>
-	<true/>
-</dict>
-</plist>
-PLEOF
-    echo "[postinst] daemon rewrite exit=$? dy=$DY prog=$PROG" >> $LOG
-    launchctl kickstart -k user/foreground/com.zjx.ldysdaemon 2>> $LOG
-    echo "[postinst] kickstart exit=$?" >> $LOG
-else
-    echo "[postinst] daemon plist missing: $DP" >> $LOG
+    chflags nouchg "$DP" 2>/dev/null
+    plutil -remove EnvironmentVariables "$DP" 2>/dev/null
 fi
 
-echo "[postinst] head: $(head -c 80 "$PLIST")" >> $LOG
-echo "[postinst] done" >> $LOG
 exit 0
