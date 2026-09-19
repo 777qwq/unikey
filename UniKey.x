@@ -240,6 +240,12 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
             return;
         }
         NSDictionary *cfg = LoadConfig();
+        // 跨进程统一去重：backboardd 与 App 进程各发一次（各自去重互不可见）
+        static long s_lastCode = 0;
+        static CFTimeInterval s_lastT = 0;
+        CFTimeInterval now = CACurrentMediaTime();
+        if (code == s_lastCode && (now - s_lastT) < 0.25) return;
+        s_lastCode = code; s_lastT = now;
         NSString *action = [cfg objectForKey:@(code)];
         if (action) {
             UKLog([NSString stringWithFormat:@"app key %ld -> %@", (long)code, action]);
@@ -255,7 +261,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.7.0 loaded (SB side)");
+    UKLog(@"unikey 2.7.1 loaded (SB side)");
     for (int code = 2000; code <= 2600; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
