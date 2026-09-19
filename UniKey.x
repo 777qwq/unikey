@@ -242,6 +242,8 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
             UKLog([NSString stringWithFormat:@"diag: HID event type %ld seen", (long)code - 3000]);
             return;
         }
+        if (code == 9989) { UKLog(@"diag 9989: injected into ldysdaemon!"); return; }
+        if (code == 9988) { UKLog(@"diag 9988: DAEMON saw keyboard event"); return; }
         if (code >= 9990 && code <= 9999) {
             NSString *m = (code==9990) ? @"diag 9990: HID hooks installed in app"
                         : (code==9991) ? @"diag 9991: IOKit never loaded (10s timeout)"
@@ -251,8 +253,6 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
                         : (code==9997) ? @"diag 9997: BKB saw keyboard event"
                         : (code==9993) ? @"diag 9993: SB HID client created OK"
                         : (code==9998) ? @"diag 9998: BKB saw button event"
-                        : (code==9989) ? @"diag 9989: injected into ldysdaemon!"
-                        : (code==9988) ? @"diag 9988: DAEMON saw keyboard event"
                         : (code==9994) ? @"diag 9994: HID callback register wrapped"
                         : nil;
             if (m) UKLog(m);
@@ -279,7 +279,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 
 %ctor {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.8.4 loaded (SB side)");
+    UKLog(@"unikey 2.8.5 loaded (SB side)");
     // 延迟创建 SB 侧 HID 客户端（构造函数延迟执行铁律）
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         UKSBHIDSetup();
