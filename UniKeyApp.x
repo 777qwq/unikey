@@ -38,6 +38,7 @@ static CFTimeInterval g_lastTime = 0;
 static int g_hidState = 0;   // 0=未装 1=已装
 static BOOL g_sawKb = NO;    // 首个键盘事件诊断（每进程一次）
 static BOOL g_sawReg = NO;   // 首次回调包裹诊断
+static BOOL g_sawButton = NO; // 首个手柄按键事件诊断
 
 static void UKDiag(int code) {
     @try { notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%d", code] UTF8String]); } @catch (NSException *e) { }
@@ -55,13 +56,25 @@ static void UKPost(long code) {
 
 static void UKInspectHID(UKHIDEventRef ev) {
     if (!ev || !uk_evGetType || !uk_evGetInt) return;
-    if (uk_evGetType(ev) != 3) return; // 仅键盘
-    if (!g_sawKb) { g_sawKb = YES; UKDiag(9992); }
-    int repeat = uk_evGetInt(ev, 0x30003);
-    if (repeat != 0) return;
-    int down = uk_evGetInt(ev, 0x30002);
-    int usage = uk_evGetInt(ev, 0x30001);
-    if (down > 0 && usage > 0) UKPost(2000 + usage);
+    unsigned int t = uk_evGetType(ev);
+    if (t == 11) return; // digitizer/触摸：高频，直接滤掉
+    if (t == 3) { // 键盘
+        if (!g_sawKb) { g_sawKb = YES; UKDiag(9992); }
+        int repeat = uk_evGetInt(ev, 0x30003);
+        if (repeat != 0) return;
+        int down = uk_evGetInt(ev, 0x30002);
+        int usage = uk_evGetInt(ev, 0x30001);
+        if (down > 0 && usage > 0) UKPost(2000 + usage);
+        return;
+    }
+    if (t == 2) { // Button/手柄：外设盒子在游戏里把键盘翻译成手柄键
+        if (!g_sawButton) { g_sawButton = YES; UKDiag(9995); }
+        int down = uk_evGetInt(ev, 0x20004); // kIOHIDEventFieldButtonDown
+        int btn = uk_evGetInt(ev, 0x20001);  // kIOHIDEventFieldButtonNumber
+        if (down == 1 && btn > 0) UKPost(2600 + btn); // 手柄代码空间，与键盘隔离
+        return;
+    }
+    // 其余类型（旋转/滚轮等）忽略
 }
 
 // ---- L2 挂钩体（覆盖三路收包/分发）----
@@ -144,7 +157,7 @@ static void UKImageAdded(const struct mach_header *mh, intptr_t slide) {
 %ctor {
     NSString *bid = NSBundle.mainBundle.bundleIdentifier;
     if (!bid || [bid isEqualToString:@"com.apple.springboard"]) return;
-    NSLog(@"[UniKeyApp] 2.6.2 relay loaded in %@", bid);
+    NSLog(@"[UniKeyApp] 2.6.3 relay loaded in %@", bid);
     // IOKit 已加载则注册即触发；未加载则等加载瞬间（先于任何回调注册）
     _dyld_register_func_for_add_image(UKImageAdded);
     // 兜底：10 秒后仍未挂钩 = IOKit 始终未加载
