@@ -37,19 +37,6 @@ static id SafeMsgObj(id obj, SEL sel) {
     } @catch (NSException *e) { return nil; }
 }
 
-static long SafeMsgInt(id obj, SEL sel) {
-    @try {
-        if (!obj || !sel) return -1;
-        Method m = class_getInstanceMethod(object_getClass(obj), sel);
-        if (!m) return -1;
-        const char *enc = method_getTypeEncoding(m);
-        if (!enc) return -1;
-        char r = enc[0];
-        if (!(r=='q'||r=='Q'||r=='i'||r=='I'||r=='l'||r=='L'||r=='c'||r=='C'||r=='B')) return -1;
-        return ((long(*)(id, SEL))objc_msgSend)(obj, sel);
-    } @catch (NSException *e) { return -1; }
-}
-
 // 配置：/var/mobile/unikey.conf 每行 "键码=动作"
 // 动作: home | volup | voldown | shortcut:名字
 static NSDictionary *LoadConfig(void) {
