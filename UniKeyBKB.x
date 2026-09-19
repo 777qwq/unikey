@@ -31,6 +31,7 @@ static long g_lastCode = 0;
 static double g_lastTime = 0;
 static int g_hidState = 0;
 static BOOL g_sawReg = NO;
+static BOOL g_sawKb = NO;   // BKB首次见到键盘事件 → 9997
 
 static void UKDiag(int code) {
     @try { notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%d", code] UTF8String]); } @catch (NSException *e) { }
@@ -51,6 +52,7 @@ static void UKInspectHID(UKHIDEventRef ev) {
     unsigned int t = uk_evGetType(ev);
     if (t == 11) return; // digitizer/触摸：高频
     if (t == 3) { // 键盘
+        if (!g_sawKb) { g_sawKb = YES; UKDiag(9997); }
         int repeat = uk_evGetInt(ev, 0x30003);
         if (repeat != 0) return;
         int down = uk_evGetInt(ev, 0x30002);

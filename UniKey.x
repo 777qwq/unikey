@@ -249,6 +249,8 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
                         : (code==9992) ? @"diag 9992: keyboard event SEEN via HID path"
                         : (code==9995) ? @"diag 9995: gamepad BUTTON events flowing"
                         : (code==9996) ? @"diag 9996: backboardd relay installed"
+                        : (code==9997) ? @"diag 9997: BKB saw keyboard event"
+                        : (code==9998) ? @"diag 9998: BKB saw button event"
                         : (code==9994) ? @"diag 9994: HID callback register wrapped"
                         : nil;
             if (m) UKLog(m);
@@ -276,14 +278,14 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.7.2 loaded (SB side)");
+    UKLog(@"unikey 2.7.3 loaded (SB side)");
     for (int code = 2000; code <= 2600; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
                                         (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     }
-    for (int code = 9990; code <= 9994; code++) {
+    for (int code = 9990; code <= 9999; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
                                         (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
