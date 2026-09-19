@@ -185,12 +185,17 @@ static void RunAction(NSString *action) {
 typedef struct __IOHIDEvent *UKHIDEventRef;
 static unsigned int (*sb_evGetType)(UKHIDEventRef);
 static int (*sb_evGetInt)(UKHIDEventRef, unsigned int);
+static unsigned int g_seenTypes = 0; // 每类型一次性诊断位图
 
 static void sb_hid_cb(void *target, void *refcon, void *queue, UKHIDEventRef ev) {
     @try {
         if (!ev || !sb_evGetType || !sb_evGetInt) return;
         unsigned int t = sb_evGetType(ev);
         if (t == 11) return; // 触摸高频滤除
+        if (t < 32 && !(g_seenTypes & (1u << t))) {
+            g_seenTypes |= (1u << t);
+            notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%lu", 3000UL + (unsigned long)t] UTF8String]);
+        }
         if (t == 3) { // 键盘
             static BOOL saw = NO;
             if (!saw) { saw = YES; notify_post("com.user.unikey.key.9992"); }
@@ -220,15 +225,7 @@ static void UKSBHIDSetup(void) {
         if (!create || !sched || !reg || !sb_evGetType || !sb_evGetInt) { UKLog(@"SB HID: dlsym incomplete"); return; }
         void *client = create(NULL);
         if (!client) { UKLog(@"SB HID: client create failed (entitlement?)"); return; }
-        if (match) {
-            int page = 7; // kHIDPage_KeyboardOrKeypad
-            CFStringRef k = CFSTR("DeviceUsagePage");
-            CFNumberRef v = CFNumberCreate(NULL, kCFNumberIntType, &page);
-            const void *keys[1] = { k }; const void *vals[1] = { v };
-            CFDictionaryRef d = CFDictionaryCreate(NULL, keys, vals, 1, &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-            match(client, d);
-            CFRelease(d); CFRelease(v);
-        }
+        // 2.8.1: 不再限定键盘页，订阅全部（盒子的游戏模式可能用别的 usage page）
         reg(client, sb_hid_cb, NULL, NULL);
         sched(client, CFRunLoopGetMain(), kCFRunLoopCommonModes);
         notify_post("com.user.unikey.key.9993");
@@ -242,6 +239,10 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
         if (![nameStr hasPrefix:@"com.user.unikey.key."]) return;
         long code = [[nameStr substringFromIndex:20] longLongValue];
         if (code <= 0) return;
+        if (code >= 3000 && code <= 3020) {
+            UKLog([NSString stringWithFormat:@"diag: HID event type %ld seen", (long)code - 3000]);
+            return;
+        }
         if (code >= 9990 && code <= 9999) {
             NSString *m = (code==9990) ? @"diag 9990: HID hooks installed in app"
                         : (code==9991) ? @"diag 9991: IOKit never loaded (10s timeout)"
@@ -277,7 +278,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 
 %ctor {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.8.0 loaded (SB side)");
+    UKLog(@"unikey 2.8.1 loaded (SB side)");
     // 延迟创建 SB 侧 HID 客户端（构造函数延迟执行铁律）
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         UKSBHIDSetup();
@@ -289,6 +290,12 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     }
     for (int code = 9990; code <= 9999; code++) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL, KeyNotifyCallback,
+                                        (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
+    for (int code = 3000; code <= 3020; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
                                         (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],

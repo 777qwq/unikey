@@ -47,10 +47,16 @@ static void UKPost(long code) {
     } @catch (NSException *e) { }
 }
 
+static unsigned int g_seenTypes = 0; // 每类型一次性诊断位图
+
 static void UKInspectHID(UKHIDEventRef ev) {
     if (!ev || !uk_evGetType || !uk_evGetInt) return;
     unsigned int t = uk_evGetType(ev);
     if (t == 11) return; // digitizer/触摸：高频
+    if (t < 32 && !(g_seenTypes & (1u << t))) {
+        g_seenTypes |= (1u << t);
+        notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%lu", 3000UL + (unsigned long)t] UTF8String]);
+    }
     if (t == 3) { // 键盘
         if (!g_sawKb) { g_sawKb = YES; UKDiag(9997); }
         int repeat = uk_evGetInt(ev, 0x30003);
