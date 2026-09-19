@@ -43,7 +43,9 @@ jobs:
           cp unikeygenfilter layout/usr/bin/
 
       - name: Build package
-        run: make package FINALPACKAGE=1
+        run: |
+          make clean
+          make package FINALPACKAGE=1
         env:
           THEOS_PACKAGE_SCHEME: rootless
 
