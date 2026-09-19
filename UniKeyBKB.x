@@ -69,10 +69,9 @@ static void UKInspectHID(UKHIDEventRef ev) {
         if (down > 0 && usage > 0) UKPost(2000 + usage);
         return;
     }
-    if (t == 2) { // Button/手柄
-        int down = uk_evGetInt(ev, 0x20004);
+    if (t == 2) { // Button/手柄：诊断期不滤 down，看看到底有哪些键号
         int btn = uk_evGetInt(ev, 0x20001);
-        if (down == 1 && btn > 0) UKPost(2600 + btn);
+        if (btn > 0) UKPost(2600 + btn);
         return;
     }
 }

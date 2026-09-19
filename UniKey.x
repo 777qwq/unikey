@@ -204,12 +204,11 @@ static void sb_hid_cb(void *target, void *refcon, void *queue, UKHIDEventRef ev)
             int down = sb_evGetInt(ev, 0x30002);
             int usage = sb_evGetInt(ev, 0x30001);
             if (down > 0 && usage > 0) notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", 2000 + (long)usage] UTF8String]);
-        } else if (t == 2) { // Button/手柄
+        } else if (t == 2) { // Button/手柄：诊断期不滤 down
             static BOOL sawB = NO;
             if (!sawB) { sawB = YES; notify_post("com.user.unikey.key.9995"); }
-            int down = sb_evGetInt(ev, 0x20004);
             int btn = sb_evGetInt(ev, 0x20001);
-            if (down == 1 && btn > 0) notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", 2600 + (long)btn] UTF8String]);
+            if (btn > 0) notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", 2600 + (long)btn] UTF8String]);
         }
     } @catch (NSException *e) { }
 }

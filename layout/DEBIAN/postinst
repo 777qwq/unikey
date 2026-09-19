@@ -19,10 +19,9 @@ DY="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
 if [ -f "$DP" ]; then
     chflags nouchg "$DP" 2>> $LOG
     plutil -remove EnvironmentVariables "$DP" 2>> $LOG
-    plutil -insert EnvironmentVariables -dict "$DP" 2>> $LOG
-    plutil -insert EnvironmentVariables.DYLD_INSERT_LIBRARIES -string "$DY" "$DP" 2>> $LOG
+    plutil -insert EnvironmentVariables -json "{\"DYLD_INSERT_LIBRARIES\":\"$DY\"}" "$DP" 2>> $LOG
     echo "[postinst] daemon plist exit=$? dy=$DY" >> $LOG
-    launchctl kickstart -k system/com.zjx.ldysdaemon 2>> $LOG
+    launchctl kickstart -k user/foreground/com.zjx.ldysdaemon 2>> $LOG
     echo "[postinst] kickstart exit=$?" >> $LOG
 else
     echo "[postinst] daemon plist missing: $DP" >> $LOG
