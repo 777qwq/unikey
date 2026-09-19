@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <notify.h>
+#import <dlfcn.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
@@ -191,51 +192,62 @@ static void RunAction(NSString *action) {
     }
 }
 
-static void DispatchAction(NSString *action) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        RunAction(action);
-    });
-}
+// ---- SB 侧主动 HID 订阅（v2.8.0 新增，backboardd 注入失败的 Plan B）----
+// 在 SpringBoard 内创建自己的 IOHIDEventSystemClient 订阅系统键盘流，
+// 不依赖 backboardd 注入；成败由 9993（创建成功）诊断码说话
+typedef struct __IOHIDEvent *UKHIDEventRef;
+static unsigned int (*sb_evGetType)(UKHIDEventRef);
+static int (*sb_evGetInt)(UKHIDEventRef, unsigned int);
 
-%hook UIApplication
-
-- (void)sendEvent:(UIEvent *)event {
+static void sb_hid_cb(void *target, void *refcon, void *queue, UKHIDEventRef ev) {
     @try {
-        if (event.type == 4) {
-            NSDictionary *cfg = LoadConfig();
-            id presses = SafeMsgObj(event, sel_registerName("allPresses"));
-            if ([presses isKindOfClass:[NSSet class]]) {
-                for (id press in presses) {
-                    @try {
-                        long ptype = SafeMsgInt(press, sel_registerName("type"));
-                        long pphase = SafeMsgInt(press, sel_registerName("phase"));
-                        if (ptype > 0 && pphase == 0) {
-                            static long lastType = 0;
-                            static CFTimeInterval lastTime = 0;
-                            CFTimeInterval now = CACurrentMediaTime();
-                            if (ptype == lastType && (now - lastTime) < 0.2) {
-                                %orig;
-                                return;
-                            }
-                            lastType = ptype; lastTime = now;
-                            NSString *action = cfg.count ? [cfg objectForKey:@(ptype)] : nil;
-                            if (action) {
-                                UKLog([NSString stringWithFormat:@"remap %ld -> %@", (long)ptype, action]);
-                                DispatchAction(action);
-                                return; // 吞掉事件
-                            } else {
-                                UKLog([NSString stringWithFormat:@"key %ld (unbound)", (long)ptype]);
-                            }
-                        }
-                    } @catch (NSException *e) { }
-                }
-            }
+        if (!ev || !sb_evGetType || !sb_evGetInt) return;
+        unsigned int t = sb_evGetType(ev);
+        if (t == 11) return; // 触摸高频滤除
+        if (t == 3) { // 键盘
+            static BOOL saw = NO;
+            if (!saw) { saw = YES; notify_post("com.user.unikey.key.9992"); }
+            int repeat = sb_evGetInt(ev, 0x30003);
+            if (repeat != 0) return;
+            int down = sb_evGetInt(ev, 0x30002);
+            int usage = sb_evGetInt(ev, 0x30001);
+            if (down > 0 && usage > 0) notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", 2000 + (long)usage] UTF8String]);
+        } else if (t == 2) { // Button/手柄
+            static BOOL sawB = NO;
+            if (!sawB) { sawB = YES; notify_post("com.user.unikey.key.9995"); }
+            int down = sb_evGetInt(ev, 0x20004);
+            int btn = sb_evGetInt(ev, 0x20001);
+            if (down == 1 && btn > 0) notify_post([[NSString stringWithFormat:@"com.user.unikey.key.%ld", 2600 + (long)btn] UTF8String]);
         }
     } @catch (NSException *e) { }
-    %orig;
 }
 
-%end
+static void UKSBHIDSetup(void) {
+    @try {
+        void *(*create)(void *) = (void *(*)(void *))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientCreate");
+        void (*sched)(void *, CFRunLoopRef, CFStringRef) = (void (*)(void *, CFRunLoopRef, CFStringRef))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientScheduleWithRunLoop");
+        void (*reg)(void *, void *, void *, void *) = (void (*)(void *, void *, void *, void *))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientRegisterEventCallback");
+        void (*match)(void *, CFDictionaryRef) = (void (*)(void *, CFDictionaryRef))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientSetMatching");
+        sb_evGetType = (unsigned int (*)(UKHIDEventRef))dlsym(RTLD_DEFAULT, "IOHIDEventGetType");
+        sb_evGetInt = (int (*)(UKHIDEventRef, unsigned int))dlsym(RTLD_DEFAULT, "IOHIDEventGetIntegerValue");
+        if (!create || !sched || !reg || !sb_evGetType || !sb_evGetInt) { UKLog(@"SB HID: dlsym incomplete"); return; }
+        void *client = create(NULL);
+        if (!client) { UKLog(@"SB HID: client create failed (entitlement?)"); return; }
+        if (match) {
+            int page = 7; // kHIDPage_KeyboardOrKeypad
+            CFStringRef k = CFSTR("DeviceUsagePage");
+            CFNumberRef v = CFNumberCreate(NULL, kCFNumberIntType, &page);
+            const void *keys[1] = { k }; const void *vals[1] = { v };
+            CFDictionaryRef d = CFDictionaryCreate(NULL, keys, vals, 1, &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+            match(client, d);
+            CFRelease(d); CFRelease(v);
+        }
+        reg(client, sb_hid_cb, NULL, NULL);
+        sched(client, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+        notify_post("com.user.unikey.key.9993");
+        UKLog(@"SB HID client registered");
+    } @catch (NSException *e) { UKLog(@"SB HID setup exception"); }
+}
 
 static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     @try {
@@ -250,6 +262,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
                         : (code==9995) ? @"diag 9995: gamepad BUTTON events flowing"
                         : (code==9996) ? @"diag 9996: backboardd relay installed"
                         : (code==9997) ? @"diag 9997: BKB saw keyboard event"
+                        : (code==9993) ? @"diag 9993: SB HID client created OK"
                         : (code==9998) ? @"diag 9998: BKB saw button event"
                         : (code==9994) ? @"diag 9994: HID callback register wrapped"
                         : nil;
@@ -276,9 +289,12 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 }
 
 %ctor {
-    %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.7.3 loaded (SB side)");
+    UKLog(@"unikey 2.8.0 loaded (SB side)");
+    // 延迟创建 SB 侧 HID 客户端（构造函数延迟执行铁律）
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UKSBHIDSetup();
+    });
     for (int code = 2000; code <= 2600; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
