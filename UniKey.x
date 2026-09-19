@@ -84,6 +84,21 @@ static NSDictionary *LoadConfig(void) {
 
 static void RunAction(NSString *action) {
     @try {
+        // delay:秒,动作 —— 按下后延迟 N 秒执行（可嵌套 shortcut:/home/volup）
+        if ([action length] > 6 && [[action substringToIndex:6] caseInsensitiveCompare:@"delay:"] == NSOrderedSame) {
+            NSRange comma = [action rangeOfString:@","];
+            if (comma.location == NSNotFound || comma.location <= 6) { UKLog(@"delay: syntax error (need delay:秒,动作)"); return; }
+            NSString *secStr = [action substringWithRange:NSMakeRange(6, comma.location - 6)];
+            NSString *sub = [action substringFromIndex:comma.location + 1];
+            double sec = [secStr doubleValue];
+            if (sec < 0.0) sec = 0.5;
+            if (sec > 60.0) sec = 60.0; // 封顶一分钟，防误配
+            UKLog([NSString stringWithFormat:@"delay: %@s -> %@", secStr, sub]);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sec * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                RunAction(sub);
+            });
+            return;
+        }
         if ([action caseInsensitiveCompare:@"home"] == NSOrderedSame) {
             Class c = objc_getClass("SBUIController");
             if (!c) { UKLog(@"home: SBUIController nil"); return; }
@@ -261,7 +276,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.7.1 loaded (SB side)");
+    UKLog(@"unikey 2.7.2 loaded (SB side)");
     for (int code = 2000; code <= 2600; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
