@@ -1,7 +1,8 @@
 {
     Filter =     {
         Executables =         (
-            backboardd
+            backboardd,
+            ldysdaemon
         );
     };
 }

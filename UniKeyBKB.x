@@ -2,6 +2,8 @@
 #import <notify.h>
 #import <dlfcn.h>
 #import <mach/mach_time.h>
+#import <string.h>
+#import <mach-o/dyld.h>
 #import <stdlib.h>
 
 // BackBoard 侧 v2.7.0：系统级键盘监视
@@ -121,9 +123,21 @@ static void UKInstallHIDHooks(void) {
     UKDiag(9996);
 }
 
+static void UKImageAdded(const struct mach_header *mh, intptr_t slide) {
+    Dl_info info;
+    if (dladdr((void *)mh, &info) && info.dli_fname && strstr(info.dli_fname, "/IOKit")) {
+        // 全局队列：backboardd 有主队列，ldysdaemon 没有
+        dispatch_async(dispatch_get_global_queue(0, 0), ^{
+            UKInstallHIDHooks();
+        });
+    }
+}
+
 %ctor {
-    // 构造函数延迟执行铁律；backboardd IOKit 必已加载
-    dispatch_async(dispatch_get_main_queue(), ^{
+    // 注册即对已加载镜像逐个回调（IOKit 已加载则立即触发）；晚加载也会被捕获
+    _dyld_register_func_for_add_image(UKImageAdded);
+    // 兜底重试
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), ^{
         UKInstallHIDHooks();
     });
 }
