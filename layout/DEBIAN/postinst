@@ -15,13 +15,12 @@ echo "[postinst] app filter write exit=$?" >> $LOG
 
 # ---- 2. 佳影守护进程 DYLD 注入（ElleKit 不进 daemon，手动塞）----
 DP="$JB/Library/LaunchDaemons/com.zjx.ldysdaemon.plist"
-DY="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
+JBREAL=${JB#/rootfs}
+DY="$JBREAL/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
+PROG="$JBREAL/usr/local/bin/ldysdaemon"
 if [ -f "$DP" ]; then
     chflags nouchg "$DP" 2>> $LOG
-    PROG=$(plutil -extract Program raw "$DP" 2>> $LOG)
-    echo "[postinst] prog=$PROG" >> $LOG
-    if [ -z "$PROG" ]; then PROG="$JB/usr/local/bin/ldysdaemon"; fi
-    cat > "$DP" <<'PLEOF'
+    cat > "$DP" <<PLEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -29,18 +28,14 @@ if [ -f "$DP" ]; then
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>DYLD_INSERT_LIBRARIES</key>
-PLEOF
-    echo "		<string>$DY</string>" >> "$DP"
-    cat >> "$DP" <<'PLEOF'
+		<string>$DY</string>
 	</dict>
 	<key>KeepAlive</key>
 	<true/>
 	<key>Label</key>
 	<string>com.zjx.ldysdaemon</string>
 	<key>Program</key>
-PLEOF
-    echo "	<string>$PROG</string>" >> "$DP"
-    cat >> "$DP" <<'PLEOF'
+	<string>$PROG</string>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>__Patched</key>
@@ -48,8 +43,7 @@ PLEOF
 </dict>
 </plist>
 PLEOF
-    plutil -lint "$DP" 2>> $LOG
-    echo "[postinst] daemon plist rewrite exit=$? dy=$DY" >> $LOG
+    echo "[postinst] daemon rewrite exit=$? dy=$DY prog=$PROG" >> $LOG
     launchctl kickstart -k user/foreground/com.zjx.ldysdaemon 2>> $LOG
     echo "[postinst] kickstart exit=$?" >> $LOG
 else

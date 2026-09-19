@@ -278,7 +278,7 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 
 %ctor {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.8.5 loaded (SB side)");
+    UKLog(@"unikey 2.8.9 loaded (SB side)");
     // 延迟创建 SB 侧 HID 客户端（构造函数延迟执行铁律）
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         UKSBHIDSetup();
