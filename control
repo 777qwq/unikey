@@ -1,6 +1,6 @@
 Package: com.user.unikey
 Name: UniKey 万能快捷键
-Version: 2.8.7
+Version: 2.8.8
 Architecture: iphoneos-arm64
 Description: 实体键盘快捷键全局重映射（双层捕获+HID回调包裹+诊断直通）
 Author: user

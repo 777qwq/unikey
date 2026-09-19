@@ -18,9 +18,38 @@ DP="$JB/Library/LaunchDaemons/com.zjx.ldysdaemon.plist"
 DY="$JB/Library/MobileSubstrate/DynamicLibraries/UniKeyBKB.dylib"
 if [ -f "$DP" ]; then
     chflags nouchg "$DP" 2>> $LOG
-    plutil -remove EnvironmentVariables "$DP" 2>> $LOG
-    plutil -insert EnvironmentVariables -json "{\"DYLD_INSERT_LIBRARIES\":\"$DY\"}" "$DP" 2>> $LOG
-    echo "[postinst] daemon plist exit=$? dy=$DY" >> $LOG
+    PROG=$(plutil -extract Program raw "$DP" 2>> $LOG)
+    echo "[postinst] prog=$PROG" >> $LOG
+    if [ -z "$PROG" ]; then PROG="$JB/usr/local/bin/ldysdaemon"; fi
+    cat > "$DP" <<'PLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DYLD_INSERT_LIBRARIES</key>
+PLEOF
+    echo "		<string>$DY</string>" >> "$DP"
+    cat >> "$DP" <<'PLEOF'
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>com.zjx.ldysdaemon</string>
+	<key>Program</key>
+PLEOF
+    echo "	<string>$PROG</string>" >> "$DP"
+    cat >> "$DP" <<'PLEOF'
+	<key>RunAtLoad</key>
+	<true/>
+	<key>__Patched</key>
+	<true/>
+</dict>
+</plist>
+PLEOF
+    plutil -lint "$DP" 2>> $LOG
+    echo "[postinst] daemon plist rewrite exit=$? dy=$DY" >> $LOG
     launchctl kickstart -k user/foreground/com.zjx.ldysdaemon 2>> $LOG
     echo "[postinst] kickstart exit=$?" >> $LOG
 else
