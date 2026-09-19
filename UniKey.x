@@ -228,6 +228,15 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
         if (![nameStr hasPrefix:@"com.user.unikey.key."]) return;
         long code = [[nameStr substringFromIndex:20] longLongValue];
         if (code <= 0) return;
+        if (code >= 9990 && code <= 9994) {
+            NSString *m = (code==9990) ? @"diag 9990: HID hooks installed in app"
+                        : (code==9991) ? @"diag 9991: IOKit never loaded (10s timeout)"
+                        : (code==9992) ? @"diag 9992: keyboard event SEEN via HID path"
+                        : (code==9994) ? @"diag 9994: HID callback register wrapped"
+                        : nil;
+            if (m) UKLog(m);
+            return;
+        }
         NSDictionary *cfg = LoadConfig();
         NSString *action = [cfg objectForKey:@(code)];
         if (action) {
@@ -242,12 +251,18 @@ static void KeyNotifyCallback(CFNotificationCenterRef center, void *observer, CF
 %ctor {
     %init;
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
-    UKLog(@"unikey 2.0 loaded (SB side)");
+    UKLog(@"unikey 2.6.2 loaded (SB side)");
     for (int code = 2000; code <= 2600; code++) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, KeyNotifyCallback,
                                         (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     }
-    UKLog(@"key notify observers registered (2000-2600)");
+    for (int code = 9990; code <= 9994; code++) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL, KeyNotifyCallback,
+                                        (__bridge CFStringRef)[NSString stringWithFormat:@"com.user.unikey.key.%d", code],
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
+    UKLog(@"key notify observers registered (2000-2600 + diag)");
 }
