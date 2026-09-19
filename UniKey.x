@@ -219,7 +219,6 @@ static void UKSBHIDSetup(void) {
         void *(*create)(void *) = (void *(*)(void *))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientCreate");
         void (*sched)(void *, CFRunLoopRef, CFStringRef) = (void (*)(void *, CFRunLoopRef, CFStringRef))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientScheduleWithRunLoop");
         void (*reg)(void *, void *, void *, void *) = (void (*)(void *, void *, void *, void *))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientRegisterEventCallback");
-        void (*match)(void *, CFDictionaryRef) = (void (*)(void *, CFDictionaryRef))dlsym(RTLD_DEFAULT, "IOHIDEventSystemClientSetMatching");
         sb_evGetType = (unsigned int (*)(UKHIDEventRef))dlsym(RTLD_DEFAULT, "IOHIDEventGetType");
         sb_evGetInt = (int (*)(UKHIDEventRef, unsigned int))dlsym(RTLD_DEFAULT, "IOHIDEventGetIntegerValue");
         if (!create || !sched || !reg || !sb_evGetType || !sb_evGetInt) { UKLog(@"SB HID: dlsym incomplete"); return; }
