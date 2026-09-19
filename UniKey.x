@@ -11,10 +11,6 @@
 // 键码表 /var/mobile/unikey.conf，保存即生效
 // 动作: home | volup | voldown | shortcut:名 | delay:秒,动作
 
-static void UKLog(NSString *msg) {
-    (void)msg; // 定版：日志关闭
-}
-
 static id SafeMsgObj(id obj, SEL sel) {
     @try {
         if (!obj || !sel) return nil;
